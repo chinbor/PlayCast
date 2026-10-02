@@ -1,0 +1,609 @@
+diff --git a/.review-final-fix/electron/challenge.cjs b/electron/challenge.cjs
+index 2ed2941..ca915ac 100644
+--- a/.review-final-fix/electron/challenge.cjs
++++ b/electron/challenge.cjs
+@@ -73,20 +73,27 @@ function log(state, kind, message, delta = 0) {
+ 
+ function createChallenge(saved) {
+   const state = saved?.version === 2 ? { ...fresh(), ...structuredClone(saved) } : saved?.version === 1 ? migrate(saved) : fresh()
+   state.seen ||= []
+   state.followed ||= []
+   state.stats ||= { likes: 0, follows: 0, comments: 0, gifts: 0 }
+   state.logs ||= []
+   if (state.status === 'running') state.status = 'paused'
+   state.needsBaseline = true
+ 
++  function retirePending(message) {
++    if (!state.pending) return
++    state.adjustment += state.pending
++    state.pending = 0
++    log(state, 'warning', message)
++  }
++
+   function action(type, value, now = Date.now()) {
+     if (type === 'configure') {
+       if (!['idle', 'ended'].includes(state.status)) throw new Error('璇峰厛缁撴潫褰撳墠鎸戞垬')
+       if (!value || !METRICS.some(metric => metric.id === value.metricId)) throw new Error('鐜╂硶鎸囨爣鏃犳晥')
+       const target = number(value.target), rules = validateRules(value.rules), binding = validateBinding(value.binding)
+       Object.assign(state, fresh(), { configured: true, metricId: value.metricId, target, rules, binding })
+       log(state, 'session', '宸查厤缃柊鎸戞垬')
+     } else if (type === 'bindLegacy') {
+       if (!state.migrationNotice || state.configured) throw new Error('鍙湁寰呯粦瀹氱殑鏃ф寫鎴樺彲淇濈暀杩涘害骞剁户缁?)
+       const binding = validateBinding(value)
+@@ -152,27 +159,34 @@ function createChallenge(saved) {
+           state.adjustment += state.pending
+           state.pending = 0
+           log(state, 'manual', '鏃у灞€鐨勪复鏃惰ˉ杩涘害杞负鎵嬪姩璋冩暣')
+         }
+       }
+       state.game = current
+       state.needsBaseline = false
+       log(state, 'game', '娓告垙鎸囨爣鍩虹嚎宸插缓绔?)
+       return true
+     }
+-    if (now - before.at > 120000) { state.game = current; if (state.status === 'running') state.status = 'paused'; log(state, 'warning', '娓告垙鏁版嵁涓柇瓒呰繃 2 鍒嗛挓锛屽凡鏆傚仠骞堕噸鏂板缓绔嬪熀绾?); return true }
+     const newGame = current.time < before.time - 5
+-    if (current.identity !== before.identity || current.team !== before.team || (!newGame && current.value < before.value)) {
++    if (now - before.at > 120000) {
++      retirePending('娓告垙鏁版嵁涓柇鍚庯紝鏃т复鏃惰ˉ杩涘害杞负鎵嬪姩璋冩暣')
++      state.game = current
++      if (state.status === 'running') state.status = 'paused'
++      log(state, 'warning', '娓告垙鏁版嵁涓柇瓒呰繃 2 鍒嗛挓锛屽凡鏆傚仠骞堕噸鏂板缓绔嬪熀绾?)
++      return true
++    }
++    if (current.identity !== before.identity || (!newGame && (current.team !== before.team || current.value < before.value))) {
++      retirePending('鐜╁鎴栨寚鏍囧紓甯稿悗锛屾棫涓存椂琛ヨ繘搴﹁浆涓烘墜鍔ㄨ皟鏁?)
+       state.game = current; if (state.status === 'running') state.status = 'paused'; log(state, 'warning', '鐜╁鎴栨寚鏍囨暟鎹紓甯革紝宸叉殏鍋滅瓑寰呮牳瀵?); return true
+     }
+     if (newGame) {
+-      if (state.pending) { state.adjustment += state.pending; state.pending = 0; log(state, 'warning', '鏂板灞€寮€濮嬶紝鏈拷骞崇殑涓存椂琛ヨ繘搴﹁浆涓烘墜鍔ㄨ皟鏁?) }
++      retirePending('鏂板灞€寮€濮嬶紝鏈拷骞崇殑涓存椂琛ヨ繘搴﹁浆涓烘墜鍔ㄨ皟鏁?)
+       state.game = current; log(state, 'game', '妫€娴嬪埌鏂板灞€锛涙寫鎴樿繘搴︾户缁疮璁?); return true
+     }
+     if (state.status !== 'running') {
+       const reconciled = Math.min(state.pending, Math.max(0, current.value - before.value))
+       state.pending -= reconciled
+       state.auto += reconciled
+       state.game = current
+       if (reconciled) log(state, 'game', `鏆傚仠鏈熼棿娓告垙鎸囨爣杩藉钩 ${reconciled} 椤逛复鏃惰ˉ杩涘害`)
+       return current.value !== before.value || current.time !== before.time || metricChanged
+     }
+diff --git a/.review-final-fix/electron/interaction-normalizer.cjs b/electron/interaction-normalizer.cjs
+index 12f416b..80a70d6 100644
+--- a/.review-final-fix/electron/interaction-normalizer.cjs
++++ b/electron/interaction-normalizer.cjs
+@@ -1,31 +1,34 @@
+ const scopeKey=scope=>JSON.stringify([scope.platformId,scope.accountScope,scope.roomId])
+ const matchesProvenance=(event,scope)=>!!event&&!!scope&&['platformId','accountScope','roomId'].every(key=>
+   !Object.hasOwn(event,key)||event[key]===scope[key])
+ function createNormalizer(saved){
+   const seen=new Set(Array.isArray(saved?.seen)?saved.seen.slice(-20000):[])
+   const combos=new Map(Array.isArray(saved?.combos)?saved.combos.slice(-20000):[])
+   const bound=()=>{while(seen.size>20000)seen.delete(seen.values().next().value);while(combos.size>20000)combos.delete(combos.keys().next().value)}
+-  return {
+-    normalize(event,scope){
+-      if(!event||typeof event.id!=='string'||!event.id||!['like','follow','comment','gift','enter'].includes(event.type)||!scope?.platformId||!scope.accountScope||!scope.roomId||!matchesProvenance(event,scope))return null
++  function normalizeResult(event,scope){
++      const skipped={event:null,reason:null}
++      if(!event||typeof event.id!=='string'||!event.id||!['like','follow','comment','gift','enter'].includes(event.type)||!scope?.platformId||!scope.accountScope||!scope.roomId||!matchesProvenance(event,scope))return skipped
+       const prefix=scopeKey(scope),quantity=['like','gift'].includes(event.type)
+       let count=quantity?event.count:1
+-      if(!Number.isSafeInteger(count)||count<1||count>1000000)return null
++      if(!Number.isSafeInteger(count)||count<1||count>1000000)return skipped
+       let id=JSON.stringify([prefix,event.type,event.id])
+       if(event.type==='gift'&&event.combo){
+-        if(!event.groupId||!event.userId||!event.giftId)return null
++        if(!event.groupId||!event.userId||!event.giftId)return {event:null,reason:'missing-combo-identity'}
+         const group=JSON.stringify([prefix,event.userId,event.giftId,event.groupId]),before=combos.get(group)||0
+         combos.set(group,Math.max(before,count));bound()
+-        if(count<=before)return null
++        if(count<=before)return skipped
+         id=JSON.stringify([prefix,'combo',event.userId,event.giftId,event.groupId,count]);count-=before
+       }
+-      if(seen.has(id))return null
++      if(seen.has(id))return skipped
+       seen.add(id);bound()
+       // Never pass raw cumulative-protocol fields into consumers.
+       const {combo,groupId,repeatEnd,...plain}=event
+-      return {...plain,...scope,id,count,receivedAt:Date.now()}
+-    },
++      return {event:{...plain,...scope,id,count,receivedAt:Date.now()},reason:null}
++  }
++  return {
++    normalize:(event,scope)=>normalizeResult(event,scope).event,
++    normalizeResult,
+     export:()=>({seen:[...seen],combos:[...combos]})
+   }
+ }
+ module.exports={createNormalizer,scopeKey,matchesProvenance}
+diff --git a/.review-final-fix/electron/main.cjs b/electron/main.cjs
+index 8311363..c6e7976 100644
+--- a/.review-final-fix/electron/main.cjs
++++ b/electron/main.cjs
+@@ -25,23 +25,25 @@ async function load(w,hash=''){
+ }
+ async function openOverlay(){
+   if(overlay&&!overlay.isDestroyed()){overlay.show();return}
+   overlay=new BrowserWindow({width:620,height:270,minWidth:480,minHeight:220,alwaysOnTop:true,title:'鎸戞垬灞曠ず 路 Live Interaction Tool',autoHideMenuBar:true,backgroundColor:'#fff9f3',webPreferences:preferences()})
+   await load(overlay,'#overlay')
+ }
+ app.on('second-instance',()=>{main?.show();main?.focus()})
+ app.whenReady().then(async()=>{
+   if(smoke)await require('../tests/fixtures/account-response.cjs').installAvatarFixture(session.defaultSession)
+   main=new BrowserWindow({width:1360,height:920,minWidth:960,minHeight:700,show:!smoke&&!liveProbe,title:'Live Interaction Tool',autoHideMenuBar:true,webPreferences:preferences()})
+-  product=createProduct({app,BrowserWindow,session,safeStorage,accountRequest:smoke?require('../tests/fixtures/account-response.cjs'):undefined,adapterFactories:smoke?{douyin:require('../tests/fixtures/smoke-platform.cjs')({BrowserWindow,session})}:undefined,globalShortcut,smoke:smoke||!!liveProbe,getWindow:()=>main,getOverlay:()=>overlay,openOverlay,switchMode})
++  const capabilitySmoke=smoke&&process.env.LIT_SMOKE_CASE==='capabilities'
++  const smokeAdapters=capabilitySmoke?{'comment-only':require('../tests/fixtures/comment-platform.cjs')}:smoke?{douyin:require('../tests/fixtures/smoke-platform.cjs')({BrowserWindow,session})}:undefined
++  product=createProduct({app,BrowserWindow,session,safeStorage,accountRequest:smoke?require('../tests/fixtures/account-response.cjs'):undefined,adapterFactories:smokeAdapters,globalShortcut,smoke:smoke||!!liveProbe,getWindow:()=>main,getOverlay:()=>overlay,openOverlay,switchMode})
+   function trusted(event){if(event.sender!==main.webContents&&event.sender!==overlay?.webContents)throw new Error('鏃犳潈璁块棶')}
+   ipcMain.handle('product:get',event=>{trusted(event);return product.snapshot()})
+   ipcMain.handle('product:action',(event,type,value)=>{if(event.sender!==main.webContents)throw new Error('鏃犳潈鎿嶄綔');return product.action(type,value)})
+   ipcMain.handle('collector:get',event=>{trusted(event);return lastSnapshot})
+   await load(main);poll()
+   main.on('closed',()=>{generation++;clearTimeout(timer);product.stop();app.quit()})
+-  if(smoke){try{await require('../tests/guided-smoke.cjs')({main,product,app,openOverlay,getOverlay:()=>overlay});app.quit()}catch(e){console.error(e);app.exit(1)}}
++  if(smoke){try{await require(capabilitySmoke?'../tests/capability-smoke.cjs':'../tests/guided-smoke.cjs')({main,product,app,openOverlay,getOverlay:()=>overlay});app.quit()}catch(e){console.error(e);app.exit(1)}}
+   if(liveProbe){product.action('connect',liveProbe.split('=')[1]);const start=Date.now();const t=setInterval(()=>{const s=product.snapshot().douyin;console.log(JSON.stringify({status:s.status,message:s.message,received:s.received,decoded:s.decoded}));if(s.decoded>0||s.status==='error'||Date.now()-start>50000){clearInterval(t);product.stop();app.exit(s.decoded>0?0:2)}},5000)}
+ }).catch(e=>{console.error(e);app.exit(1)})
+ app.on('before-quit',()=>{generation++;clearTimeout(timer);product?.stop()})
+ app.on('window-all-closed',()=>app.quit())
+ if(smoke)setTimeout(()=>{console.error('Smoke timeout');app.exit(1)},60000).unref()
+diff --git a/.review-final-fix/electron/platforms.cjs b/electron/platforms.cjs
+index 6cade6a..360d01a 100644
+--- a/.review-final-fix/electron/platforms.cjs
++++ b/electron/platforms.cjs
+@@ -14,15 +14,15 @@ function parseDouyinRoom(input){
+   const value=input.trim()
+   if(/^\d{1,30}$/.test(value))return value
+   try{const url=new URL(value);if(url.protocol==='https:'&&url.hostname==='live.douyin.com'&&!url.username&&!url.password&&/^\/\d{1,30}\/?$/.test(url.pathname))return url.pathname.replaceAll('/','')}catch{}
+   throw Error('璇疯緭鍏ユ暟瀛楁埧闂村彿鎴?https://live.douyin.com/鎴块棿鍙?)
+ }
+ function createDouyinAdapter(connector){
+   let normalizer=createNormalizer()
+   return {descriptor:{id:'douyin',name:'鎶栭煶鐩存挱',capabilities:{login:['official-window'],messages:['like','follow','comment','gift','enter'],giftCatalog:true}},
+     getAccount:()=>connector.snapshot().auth,login:room=>connector.showSession(room),refreshAccount:()=>connector.refreshAuth(),logout:()=>connector.clearCredential(),
+     parseRoom:parseDouyinRoom,getGiftCatalog:signal=>connector.getGifts(signal),getState:()=>connector.snapshot(),
+-    normalize:(event,scope)=>normalizer.normalize(event,scope),exportNormalizer:()=>normalizer.export(),restoreNormalizer:saved=>{normalizer=createNormalizer(saved)},
++    normalize:(event,scope)=>normalizer.normalize(event,scope),normalizeResult:(event,scope)=>normalizer.normalizeResult(event,scope),exportNormalizer:()=>normalizer.export(),restoreNormalizer:saved=>{normalizer=createNormalizer(saved)},
+     importCredential:value=>connector.importCredential(value),
+     connect:room=>connector.connect(room),disconnect:()=>connector.stop(),dispose:()=>connector.dispose()}
+ }
+ module.exports={createPlatformRegistry,createDouyinAdapter,parseDouyinRoom}
+diff --git a/.review-final-fix/electron/product.cjs b/electron/product.cjs
+index 417f416..40bdef4 100644
+--- a/.review-final-fix/electron/product.cjs
++++ b/electron/product.cjs
+@@ -3,75 +3,83 @@ const {createChallenge}=require('./challenge.cjs')
+ const {METRICS,readMetric}=require('./game-metrics.cjs')
+ const {createDouyin}=require('./douyin.cjs')
+ const {createFeed}=require('./message-feed.cjs')
+ const {createCredentialVault}=require('./credential-vault.cjs')
+ const {createPlatformRegistry,createDouyinAdapter}=require('./platforms.cjs')
+ const {createGiftCatalog}=require('./gift-catalog.cjs')
+ const {scopeKey,matchesProvenance}=require('./interaction-normalizer.cjs')
+ const sameScope=(a,b)=>!!a&&!!b&&['platformId','accountScope','roomId'].every(k=>a[k]===b[k])
+ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,giftRequest,adapterFactories,globalShortcut,smoke,getWindow,getOverlay,openOverlay,switchMode}){
+   const file=path.join(app.getPath('userData'),'challenge-v1.json')
+-  let saved,error='',saveTimer,publishTimer,source='live',platforms,disposed=false,lastGame=null,giftAbort,giftLoading=false
++  let saved,error='',saveTimer,publishTimer,source='live',platforms,disposed=false,lastGame=null,giftAbort,giftLoading=false,interactionWarning=null
+   if(!smoke)try{if(fs.existsSync(file))saved=JSON.parse(fs.readFileSync(file,'utf8'))}catch{error='瀛樻。璇诲彇澶辫触锛屽師鏂囦欢鏈鐩栥€傝澶囦唤鍚庢帓鏌ャ€?}
+   const readFailed=!!error,live=createChallenge(saved?.challenge),catalog=createGiftCatalog(saved?.catalog),shortcuts=[]
+   let test=createChallenge(),selected=saved?.setup?.platformId||null,confirmed=saved?.setup?.confirmed||null,room=saved?.room||'',presets=saved?.presets||{}
+   let feeds={live:createFeed(),test:createFeed()},lastAccount=null,connectionScope=null
+   const current=()=>source==='live'?live:test,feed=()=>feeds[source]
+   const platform=()=>platforms.get(selected||platforms.list()[0].id)
+   const account=()=>platform().getAccount()
+   const scope=()=>selected&&account().profile?.id&&room?{platformId:selected,accountScope:account().profile.id,roomId:room}:null
+   const activeChallenge=()=>live.state.configured&&live.state.status!=='ended'
+   function setup(){
+     const a=account(),binding=scope(),roomConfirmed=sameScope(confirmed,binding)
+     const stage=!selected?'platform':a.status!=='authenticated'?'login':!roomConfirmed?'room':!live.state.configured||live.state.status==='ended'||!sameScope(live.state.binding,binding)?'gameplay':'workspace'
+     return {platformId:selected,stage,roomConfirmed,complete:stage==='workspace',requiresNewChallenge:activeChallenge()&&!sameScope(live.state.binding,binding)}
+   }
+   function snapshot(){
+     const adapter=platform(),isLive=source==='live',s=current().snapshot(),binding=scope()
++    s.interactionWarning=interactionWarning
+     return {...s,source,room,persistenceError:error,douyin:adapter.getState?.()||{status:'idle'},platform:adapter.descriptor,platforms:platforms.list(),account:isLive?account():{status:'preview',profile:null,configured:false,message:'婕旂粌妯″紡涓嶈鍙栫湡瀹炶处鍙?},
+       setup:isLive?setup():{stage:'workspace',complete:true,platformId:selected},
+       metrics:METRICS.map(m=>({...m,...readMetric(lastGame,m.id)})),rulePresets:structuredClone(isLive&&binding&&sameScope(confirmed,binding)?presets[scopeKey(binding)]||{}:{}),
+       giftCatalog:!adapter.descriptor.capabilities.giftCatalog?{items:[],status:'unsupported',message:'姝ゅ钩鍙颁笉鏀寔绀肩墿鐩綍'}:{...catalog.snapshot(isLive?binding:null),loading:giftLoading},shortcuts,feed:feed().snapshot()}
+   }
+   function broadcast(){if(!platforms||disposed)return;for(const w of [getWindow(),getOverlay()])if(w&&!w.isDestroyed())w.webContents.send('product:state',snapshot())}
+   function flush(){clearTimeout(saveTimer);saveTimer=undefined;if(smoke||readFailed)return;try{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file+'.tmp',JSON.stringify({challenge:live.state,room,setup:{platformId:selected,confirmed},presets,catalog:catalog.export(),normalizers:Object.fromEntries(platforms.list().map(p=>[p.id,platforms.get(p.id).exportNormalizer?.()]))}));fs.renameSync(file+'.tmp',file);error=''}catch(e){error='淇濆瓨澶辫触锛?+e.message;broadcast()}}
+   function changed(save=true){if(disposed)return;if(!publishTimer)publishTimer=setTimeout(()=>{publishTimer=undefined;broadcast()},100);if(save&&!saveTimer)saveTimer=setTimeout(flush,1000)}
+   function cancelGifts(){giftAbort?.abort();giftAbort=null;giftLoading=false}
+   function onState(id){
+     if(!platforms||id!==selected){changed(false);return}
+     const a=account(),identity=a.profile?.id||null
+     if(identity!==lastAccount){lastAccount=identity;cancelGifts();if(live.state.status==='running')live.action('pause');if(connectionScope&&!sameScope(connectionScope,scope())){connectionScope=null;platform().disconnect()}}
+     if(a.status==='signed-out'&&live.state.status==='running')live.action('pause')
+     changed()
+   }
+   function onEvent(id,raw){
+     if(disposed||source!=='live'||selected!==id||account().status!=='authenticated'||!sameScope(connectionScope,scope()))return
+     if(!matchesProvenance(raw,connectionScope))return
+     try{
+-      if(raw.type==='gift')catalog.observe(connectionScope,raw)
+-      const e=platform().normalize(raw,connectionScope);if(!e){changed();return}
++      const adapter=platform()
++      const result=typeof adapter.normalizeResult==='function'?adapter.normalizeResult(raw,connectionScope):{event:adapter.normalize(raw,connectionScope),reason:null}
++      if(result.reason==='missing-combo-identity'){
++        interactionWarning={code:'missing-combo-identity',message:'绀肩墿杩炲嚮缂哄皯蹇呰鏍囪瘑锛屾湰娆℃湭璁″叆鐩爣',count:Math.min(999,(interactionWarning?.count||0)+1),at:Date.now()}
++        changed(false)
++        return
++      }
++      const e=result.event;if(!e)return
++      if(e.type==='gift')catalog.observe(connectionScope,e)
+       feed().ingest(e);live.event(e);changed()
+     }catch{error='閮ㄥ垎鐩存挱娑堟伅鏃犳硶瀹夊叏璁℃暟锛岃鏍稿鎸戞垬璁板綍';changed(false)}
+   }
+   const factories=adapterFactories||{douyin:callbacks=>{
+     const vault=safeStorage?createCredentialVault({directory:path.join(app.getPath('userData'),'accounts'),safeStorage,platformId:'douyin'}):undefined
+     const connector=createDouyin({BrowserWindow,session,vault,requestProfile:accountRequest,autoVerify:!smoke,onState:callbacks.onState,onEvent:callbacks.onEvent})
+     const adapter=createDouyinAdapter(connector);if(giftRequest)adapter.getGiftCatalog=giftRequest;return adapter
+   }}
+   platforms=createPlatformRegistry(Object.entries(factories).map(([id,factory])=>factory({onState:()=>onState(id),onEvent:e=>onEvent(id,e)})))
+   if(selected&&!platforms.list().some(p=>p.id===selected)){selected=null;confirmed=null}
+   for(const p of platforms.list())platforms.get(p.id).restoreNormalizer?.(saved?.normalizers?.[p.id])
+   function requireLogin(){if(account().status!=='authenticated')throw Error('璇峰厛瀹屾垚骞冲彴鐧诲綍楠岃瘉')}
+   function requireBinding(){requireLogin();if(!sameScope(live.state.binding,scope())||!sameScope(confirmed,scope()))throw Error('褰撳墠璐﹀彿鎴栨埧闂翠笌鎸戞垬涓嶄竴鑷达紝璇风粨鏉熸棫鎸戞垬鍚庨噸鏂拌缃?)}
+   function validateCapabilities(rules){const types=platform().descriptor.capabilities.messages||[];if((rules.likesEnabled&&!types.includes('like'))||(rules.followEnabled&&!types.includes('follow'))||(rules.gifts?.length&&!types.includes('gift')))throw Error('褰撳墠骞冲彴涓嶆敮鎸佹墍閫変簰鍔ㄨ鍒?)}
+   function validateGiftPlatforms(rules){if(rules?.gifts?.some(gift=>gift.platformId!==selected))throw Error('绀肩墿瑙勫垯蹇呴』灞炰簬褰撳墠骞冲彴')}
+-  function disconnect(){connectionScope=null;platform().disconnect();cancelGifts()}
++  function disconnect(){connectionScope=null;interactionWarning=null;platform().disconnect();cancelGifts()}
+   function confirmRoom(input,connect=true){
+     requireLogin();const next=platform().parseRoom(input),nextScope={platformId:selected,accountScope:account().profile.id,roomId:next}
+     if(activeChallenge()&&!sameScope(live.state.binding,nextScope))throw Error('鍒囨崲璐﹀彿鎴栨埧闂村墠璇峰厛缁撴潫鏃ф寫鎴?)
+     if(!sameScope(confirmed,nextScope)){disconnect();feeds.live=createFeed()}
+     room=next;confirmed=nextScope
+     if(connect){connectionScope={...nextScope};platform().connect(room)}
+   }
+   async function refreshGifts(){
+     requireLogin();const bound=scope(),adapter=platform();if(!sameScope(confirmed,bound))throw Error('璇峰厛纭鐩存挱闂?)
+     if(!adapter.descriptor.capabilities.giftCatalog)return
+diff --git a/.review-final-fix/src/components/GameplaySetup.jsx b/src/components/GameplaySetup.jsx
+index 86ce9d6..4073bba 100644
+--- a/.review-final-fix/src/components/GameplaySetup.jsx
++++ b/src/components/GameplaySetup.jsx
+@@ -1,30 +1,31 @@
+ import {useState} from 'react'
+-import InteractionRules,{defaultRules,normalizeRules,validateRulesDraft} from './InteractionRules'
++import InteractionRules,{rulesForCapabilities,normalizeRules,validateRulesDraft} from './InteractionRules'
+ 
+ const metricDescriptions={
+   'champion-kills':'褰撳墠鐜╁鍑昏触鏁屾柟鑻遍泟',
+   'creep-score':'褰撳墠鐜╁琛ュ垁鏁帮紝鏉ヨ嚜瀵瑰眬鎺ュ彛鍙ｅ緞',
+   'baron-kills':'褰撳墠鐜╁鎵€灞為槦浼嶅嚮鏉€绾充粈鐢风埖',
+   'dragon-kills':'褰撳墠鐜╁鎵€灞為槦浼嶅嚮鏉€鍏冪礌榫欎笌杩滃彜宸ㄩ緳',
+   'herald-kills':'褰撳墠鐜╁鎵€灞為槦浼嶅嚮鏉€宄¤胺鍏堥攱'
+ }
+ const eligible=metric=>!!metric?.protocolVerified&&metric.status!=='mode-unavailable'
+ 
+ export default function GameplaySetup({s,act,refreshGifts,busy}) {
++  const capabilities=s.platform?.capabilities
+   const [metricId,setMetricId]=useState(()=>s.metrics?.find(eligible)?.id||'')
+   const [target,setTarget]=useState(()=>s.rulePresets?.[s.metrics?.find(eligible)?.id]?.target??10)
+-  const [rules,setRules]=useState(()=>s.rulePresets?.[s.metrics?.find(eligible)?.id]?.rules||defaultRules())
++  const [rules,setRules]=useState(()=>rulesForCapabilities(s.rulePresets?.[s.metrics?.find(eligible)?.id]?.rules,capabilities))
+   const [error,setError]=useState('')
+   const [saving,setSaving]=useState(false)
+   const metrics=s.metrics||[]
+-  function choose(metric){setMetricId(metric.id);const preset=s.rulePresets?.[metric.id];setTarget(preset?.target??10);setRules(preset?.rules||defaultRules());setError('')}
+-  async function start(){setError('');if(!eligible(metrics.find(metric=>metric.id===metricId))){setError('褰撳墠娓告垙妯″紡娌℃湁鍙敤鎸囨爣锛岃绛夊緟鏀寔鐨勫灞€銆?);return}const value=Number(target);if(target===''||!Number.isSafeInteger(value)||value<0||value>1000000){setError('鐩爣闇€瑕佹槸 0 鍒?1000000 鐨勬暣鏁般€?);return}const ruleError=validateRulesDraft(rules);if(ruleError){setError(ruleError);return}setSaving(true);const configured=await act('configureChallenge',{metricId,target:value,rules:normalizeRules(rules)});if(configured){const started=await act('start');if(!started)setError('鎸戞垬宸蹭繚瀛橈紝浣嗗惎鍔ㄦ湭鎴愬姛锛岃妫€鏌ラ《閮ㄦ彁绀恒€?)}else setError('璁剧疆鏈繚瀛橈紝璇锋鏌ラ《閮ㄦ彁绀哄悗閲嶈瘯銆?);setSaving(false)}
++  function choose(metric){setMetricId(metric.id);const preset=s.rulePresets?.[metric.id];setTarget(preset?.target??10);setRules(rulesForCapabilities(preset?.rules,capabilities));setError('')}
++  async function start(){setError('');if(!eligible(metrics.find(metric=>metric.id===metricId))){setError('褰撳墠娓告垙妯″紡娌℃湁鍙敤鎸囨爣锛岃绛夊緟鏀寔鐨勫灞€銆?);return}const value=Number(target);if(target===''||!Number.isSafeInteger(value)||value<0||value>1000000){setError('鐩爣闇€瑕佹槸 0 鍒?1000000 鐨勬暣鏁般€?);return}const ruleError=validateRulesDraft(rules,capabilities);if(ruleError){setError(ruleError);return}setSaving(true);const configured=await act('configureChallenge',{metricId,target:value,rules:normalizeRules(rules,capabilities)});if(configured){const started=await act('start');if(!started)setError('鎸戞垬宸蹭繚瀛橈紝浣嗗惎鍔ㄦ湭鎴愬姛锛岃妫€鏌ラ《閮ㄦ彁绀恒€?)}else setError('璁剧疆鏈繚瀛橈紝璇锋鏌ラ《閮ㄦ彁绀哄悗閲嶈瘯銆?);setSaving(false)}
+   const legacy=!!s.migrationNotice&&!s.configured&&s.status==='paused'
+   return <div className="setup-gameplay"><div className="setup-heading"><span className="setup-kicker">绗?4 姝?路 閫夋嫨鐜╂硶</span><h1>閫変竴涓灞€鎸囨爣锛屽畾濂界洰鏍?/h1><p>寮€鎾悗瑙備紬鐨勭偣璧炪€佸叧娉ㄥ拰绀肩墿浼氬鍔犵洰鏍囷紱娓告垙杩涘害浠庡綋鍓嶅灞€寮€濮嬬粺璁°€?/p></div>
+     {legacy&&<section className="legacy-panel"><b>妫€娴嬪埌鏃ф寫鎴樿繘搴?/b><p>{s.migrationNotice} 褰撳墠宸插畬鎴?{s.completed}锛岀洰鏍?{s.target}銆備綘鍙互淇濈暀杩欎唤杩涘害缁х画鎸戞垬锛屾垨缁撴潫鏃ф寫鎴樺悗鏂板缓銆傚垱寤烘柊鎸戞垬浼氶噸缃繖浠借繘搴﹀拰璁板綍銆?/p><div className="button-row"><button className="button-primary" data-testid="legacy-continue" disabled={busy} onClick={async()=>{const result=await act('bindLegacy');if(result)await act('start')}}>淇濈暀杩涘害骞剁户缁?/button><button disabled={busy} onClick={async()=>{if(confirm('缁撴潫鏃ф寫鎴樺悗鍙垱寤烘柊鎸戞垬銆傛柊鎸戞垬浼氫粠闆跺紑濮嬶紝骞堕噸缃綋鍓嶈繘搴﹀拰璁板綍銆傜‘瀹氱粨鏉熷悧锛?))await act('end')}}>缁撴潫鏃ф寫鎴橈紝鏂板缓鐜╂硶</button></div></section>}
+     {!legacy&&<><section className="setup-panel"><div className="setup-section-heading"><h2>娓告垙鎸囨爣</h2><p>浜旂鐜╂硶鍧囨湁鍗忚鍙ｅ緞鏍稿锛屽皻鏈畬鎴愮湡瀹炲灞€楠岃瘉銆?/p></div><div className="metric-grid">{metrics.map(metric=>{const unavailable=!eligible(metric);return <button type="button" key={metric.id} data-testid={`metric-${metric.id}`} className={`metric-card ${metricId===metric.id&&!unavailable?'selected':''}`} aria-pressed={metricId===metric.id&&!unavailable} disabled={unavailable} onClick={()=>choose(metric)}><span className="metric-scope">{metric.scope==='team'?'闃熶紞':'涓汉'}</span><b>{metric.label}</b><small>{metricDescriptions[metric.id]}</small><em>{metric.status==='available'?'宸茶鍒板綋鍓嶅灞€':metric.status==='waiting'?'绛夊緟瀵瑰眬鏁版嵁':metric.status==='unavailable'?'褰撳墠鏁版嵁鏃犳硶纭褰掑睘':metric.status==='mode-unavailable'?'褰撳墠妯″紡涓嶅彲鐢?:'鍙€夋嫨'}</em></button>})}</div>{metrics.find(m=>m.id===metricId)?.status==='unavailable'&&<p className="settings-note" role="status">{metrics.find(m=>m.id===metricId)?.message}銆傚綋鍓嶄笉浼氳嚜鍔ㄨ鏁帮紝寰呮暟鎹綊灞炴槑纭悗鍐嶅紑濮嬬疮璁°€?/p>}</section>
+       <section className="setup-panel"><div className="setup-section-heading"><h2>鍒濆鐩爣</h2><p>浜掑姩浼氬湪杩欎釜鏁板瓧涓婄户缁姞鐩爣銆?/p></div><label className="form-label setup-target">鐩爣鏁伴噺<input data-testid="setup-target" type="number" min="0" max="1000000" value={target} onChange={e=>setTarget(e.target.value)}/></label></section>
+       <section className="setup-panel"><div className="setup-section-heading"><h2>浜掑姩瑙勫垯</h2><p>鍙负浣犻€変腑鐨勪簰鍔ㄥ姞鐩爣锛屼箣鍚庝篃鑳藉湪璁剧疆閲岃皟鏁淬€?/p></div><InteractionRules rules={rules} onChange={setRules} catalog={s.giftCatalog} capabilities={s.platform?.capabilities} refresh={refreshGifts} disabled={busy}/></section>
+       {error&&<p role="alert" className="inline-error">{error}</p>}<div className="setup-actions"><button className="button-primary" data-testid="setup-start" disabled={busy||saving||!eligible(metrics.find(metric=>metric.id===metricId))} onClick={start}>{saving?'姝ｅ湪鍚姩鈥?:'淇濆瓨骞跺紑濮嬫寫鎴?}</button><span>{metrics.some(eligible)?'娌℃湁杩涜涓殑瀵瑰眬涔熷彲浠ュ厛寮€濮嬶紝搴旂敤浼氱瓑寰呮父鎴忔暟鎹€?:'褰撳墠妯″紡娌℃湁鍙敤鎸囨爣锛岃杩涘叆鏀寔鐨勫灞€銆?}</span></div></>}
+   </div>
+ }
+diff --git a/.review-final-fix/src/components/InteractionRules.jsx b/src/components/InteractionRules.jsx
+index 86a54de..ab3f090 100644
+--- a/.review-final-fix/src/components/InteractionRules.jsx
++++ b/src/components/InteractionRules.jsx
+@@ -1,15 +1,24 @@
+ import GiftPicker from './GiftPicker'
+ 
+-export const defaultRules=()=>({likesEnabled:true,likeEvery:100,followEnabled:true,follow:1,gifts:[]})
+-export function normalizeRules(rules){return {likesEnabled:!!rules.likesEnabled,likeEvery:Number(rules.likeEvery),followEnabled:!!rules.followEnabled,follow:Number(rules.follow),gifts:(rules.gifts||[]).map(g=>({...g,reward:Number(g.reward)}))}}
+-export function validateRulesDraft(rules){
++const baseRules={likesEnabled:true,likeEvery:100,followEnabled:true,follow:1,gifts:[]}
++export function rulesForCapabilities(rules={},capabilities){
++  const current={...baseRules,...rules}
++  const supports=type=>!capabilities||capabilities.messages?.includes(type)
++  return {likesEnabled:!!current.likesEnabled&&supports('like'),likeEvery:supports('like')?current.likeEvery:100,
++    followEnabled:!!current.followEnabled&&supports('follow'),follow:supports('follow')?current.follow:1,
++    gifts:supports('gift')&&Array.isArray(current.gifts)?[...current.gifts]:[]}
++}
++export const defaultRules=capabilities=>rulesForCapabilities(baseRules,capabilities)
++export function normalizeRules(rules,capabilities){const current=rulesForCapabilities(rules,capabilities);return {likesEnabled:!!current.likesEnabled,likeEvery:Number(current.likeEvery),followEnabled:!!current.followEnabled,follow:Number(current.follow),gifts:current.gifts.map(g=>({...g,reward:Number(g.reward)}))}}
++export function validateRulesDraft(rules,capabilities){
++  rules=rulesForCapabilities(rules,capabilities)
+   const integer=(value,min,max)=>value!==''&&Number.isSafeInteger(Number(value))&&Number(value)>=min&&Number(value)<=max
+   if(!integer(rules.likeEvery,1,1000000))return '鐐硅禐闂ㄦ蹇呴』鏄?1 鍒?1000000 鐨勬暣鏁般€?
+   if(!integer(rules.follow,0,100000))return '鍏虫敞濂栧姳蹇呴』鏄?0 鍒?100000 鐨勬暣鏁般€?
+   if((rules.gifts||[]).some(gift=>!integer(gift.reward,0,100000)))return '姣忎釜绀肩墿濂栧姳蹇呴』鏄?0 鍒?100000 鐨勬暣鏁般€?
+   return ''
+ }
+ 
+ export default function InteractionRules({rules,onChange,catalog,capabilities,refresh,disabled=false,previousRules}) {
+   const thresholdChanged=previousRules&&(previousRules.likesEnabled!==rules.likesEnabled||Number(previousRules.likeEvery)!==Number(rules.likeEvery))
+   const supports=type=>!capabilities||capabilities.messages?.includes(type)
+diff --git a/.review-final-fix/src/components/Settings.jsx b/src/components/Settings.jsx
+index 083a4d3..7570d08 100644
+--- a/.review-final-fix/src/components/Settings.jsx
++++ b/src/components/Settings.jsx
+@@ -1,20 +1,21 @@
+ import {useState} from 'react'
+ import Icon from './Icons'
+ import DataPanels from '../DataPanels'
+ import DouyinConnection from './DouyinConnection'
+-import InteractionRules,{normalizeRules,validateRulesDraft} from './InteractionRules'
++import InteractionRules,{rulesForCapabilities,normalizeRules,validateRulesDraft} from './InteractionRules'
+ import {Logs} from './GameProgress'
+ 
+ export default function Settings({s,game,act,busy,section,setSection,preview,refreshGifts}) {
+-  const [rules,setRules]=useState(s.rules)
++  const capabilities=s.platform?.capabilities
++  const [rules,setRules]=useState(()=>rulesForCapabilities(s.rules,capabilities))
+   const [error,setError]=useState('')
+   const tabs=[['rules','浜掑姩瑙勫垯'],['connections','杩炴帴绠＄悊'],['shortcuts','蹇嵎閿?],['logs','鍙樺寲璁板綍'],['data','娓告垙鏁版嵁']]
+-  async function saveRules(){setError('');const draftError=validateRulesDraft(rules);if(draftError){setError(draftError);return}const result=await act('rules',normalizeRules(rules));if(!result)setError('瑙勫垯淇濆瓨澶辫触锛岃妫€鏌ュ～鍐欑殑鏁板瓧鍜岄《閮ㄦ彁绀恒€?)}
++  async function saveRules(){setError('');const draftError=validateRulesDraft(rules,capabilities);if(draftError){setError(draftError);return}const result=await act('rules',normalizeRules(rules,capabilities));if(!result)setError('瑙勫垯淇濆瓨澶辫触锛岃妫€鏌ュ～鍐欑殑鏁板瓧鍜岄《閮ㄦ彁绀恒€?)}
+   return <><nav className="settings-tabs" aria-label="璁剧疆鍒嗙被">{tabs.map(([id,name])=><button key={id} className={section===id?'selected':''} aria-pressed={section===id} onClick={()=>setSection(id)}>{name}</button>)}</nav><div className="settings-body">
+     {section==='rules'&&<><h3>瑙備紬浜掑姩鎬庢牱澧炲姞鐩爣锛?/h3><p className="muted">鏂拌鍒欏彧瀵逛箣鍚庣殑娑堟伅鐢熸晥锛屽綋鍓嶈繘搴︿細淇濈暀銆?/p><InteractionRules rules={rules} onChange={setRules} previousRules={s.rules} catalog={s.giftCatalog} capabilities={s.platform?.capabilities} refresh={refreshGifts} disabled={busy}/>{error&&<p className="inline-error" role="alert">{error}</p>}<button className="button-primary" data-testid="rules-save" disabled={busy} onClick={saveRules}><Icon name="check" size={17}/>淇濆瓨浜掑姩瑙勫垯</button></>}
+     {section==='connections'&&<><DouyinConnection s={s} act={act} busy={busy} preview={preview}/><section className="connection-block"><div className="section-title"><span className="icon-tile mint"><Icon name="game"/></span><div><h3>娓告垙杩炴帴</h3><p>{game.status==='connected'?'褰撳墠瀵瑰眬宸茶繛鎺?:game.message||'绛夊緟褰撳墠瀵瑰眬'}</p></div></div><p>褰撳墠鐜╁锛歿s.game?.identity||'鈥?} 路 {s.metric?.label||'娓告垙鎸囨爣'}锛歿s.game?.value??'鈥?}</p><p className="muted">閲囬泦闂撮殧 200 ms 路 璇锋眰鑰楁椂 {game.requestMs??'鈥?} ms</p><div className="settings-note">棣栨杩炴帴浼氭妸褰撳墠瀵瑰眬鎸囨爣浣滀负璧风偣銆傛殏鍋滄湡闂翠笉浼氳嚜鍔ㄥ鍔犺繘搴︼紱瀵瑰眬褰掑睘鏃犳硶纭鏃讹紝鑷姩璁℃暟浼氬仠姝€?/div><button disabled={busy} onClick={()=>{if(confirm('閲嶆柊鏍″噯浼氫互褰撳墠娓告垙鏁版嵁浣滀负鏂拌捣鐐广€傜‘瀹氱户缁悧锛?))act('rebase')}}>閲嶆柊鏍″噯娓告垙璧风偣</button></section><section className="connection-block"><h3>楂樼骇宸ュ叿</h3><p className="muted">婕旂ず妯″紡鍙互璇曡繍琛屼簰鍔紝涓嶄細鏀瑰姩姝ｅ紡鎸戞垬銆?/p><div className="mode-switch" aria-label="鏁版嵁妯″紡"><button disabled={busy||preview} className={s.source==='live'?'active':''} aria-pressed={s.source==='live'} onClick={()=>act('source','live')}>姝ｅ紡</button><button disabled={busy||preview} data-testid="source-test" className={s.source==='test'?'active':''} aria-pressed={s.source==='test'} onClick={()=>act('source','test')}>婕旂ず</button></div></section></>}
+     {section==='shortcuts'&&<><h3>娓告垙閲屼篃鑳借交鏉捐皟鏁?/h3><p className="muted">娓告垙鍦ㄥ墠鍙版椂涔熷彲鐢紱濡傛灉蹇嵎閿绯荤粺鍗犵敤锛岃浣跨敤涓荤晫闈㈡寜閽€?/p>{s.shortcuts?.length?s.shortcuts.map(k=><div className="shortcut" key={k.key}><span>{k.label}</span><kbd>{k.key.replace('CommandOrControl','Ctrl')}</kbd><span className={k.registered?'good':'warning'}>{k.registered?'宸叉敞鍐?:'娉ㄥ唽澶辫触 / 琚崰鐢?}</span></div>):<p className="settings-note">褰撳墠涓洪瑙堢幆澧冿紝绯荤粺蹇嵎閿笉鍙敤銆?/p>}</>}
+     {section==='logs'&&<><h3>姣忎竴娆″彉鍖栭兘鏈夎褰?/h3><p className="muted">鏈€杩?300 鏉℃寫鎴樿褰曘€?/p><Logs logs={s.logs}/></>}
+     {section==='data'&&<DataPanels data={game.data}/>}
+   </div></>
+ }
+diff --git a/tests/capability-smoke.cjs b/tests/capability-smoke.cjs
+new file mode 100644
+index 0000000..3263c65
+--- /dev/null
++++ b/tests/capability-smoke.cjs
+@@ -0,0 +1,19 @@
++const assert=require('node:assert/strict')
++module.exports=async({main,product})=>{
++  const run=code=>main.webContents.executeJavaScript(code)
++  const wait=ms=>new Promise(r=>setTimeout(r,ms))
++  async function until(code){for(let i=0;i<60;i++){if(await run(code))return;await wait(50)}throw Error('Capability UI timed out: '+code)}
++  async function click(id){const selector=JSON.stringify('[data-testid="'+id+'"]');await until('!!document.querySelector('+selector+')');await run('document.querySelector('+selector+').click()');await wait(150)}
++  await click('setup-platform-comment-only');await click('setup-login')
++  await until('!!document.querySelector("[data-testid=setup-room]")')
++  await run('(()=>{const e=document.querySelector("[data-testid=setup-room]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,"123456");e.dispatchEvent(new Event("input",{bubbles:true}))})()')
++  await click('setup-room-confirm');await until('!!document.querySelector("[data-testid=setup-start]")')
++  assert.equal(await run('!!document.querySelector("[data-testid=rules-like-every], [data-testid=rules-follow-reward], [data-testid=gift-picker-open]")'),false)
++  await click('setup-start')
++  assert.equal(product.snapshot().status,'running','Comment-only platform can configure using its actual visible controls')
++  assert.equal(product.snapshot().rules.likesEnabled,false);assert.equal(product.snapshot().rules.followEnabled,false);assert.deepEqual(product.snapshot().rules.gifts,[])
++  await click('change-gameplay');await click('confirm-end');await click('metric-creep-score');await click('setup-start')
++  assert.equal(product.snapshot().status,'running');assert.equal(product.snapshot().metricId,'creep-score')
++  assert.equal(product.snapshot().rules.likesEnabled,false);assert.equal(product.snapshot().rules.followEnabled,false)
++  console.log('Comment-only platform native UI: hidden unsupported controls, start, metric change and restart passed.')
++}
+diff --git a/.review-final-fix/tests/challenge-v2.test.cjs b/tests/challenge-v2.test.cjs
+index 1495ce4..5c351a2 100644
+--- a/.review-final-fix/tests/challenge-v2.test.cjs
++++ b/tests/challenge-v2.test.cjs
+@@ -66,20 +66,73 @@ test('a new game keeps challenge progress but starts a fresh baseline', () => {
+ 
+ test('stale game data pauses before awarding a late delta', () => {
+   const challenge = configured()
+   challenge.action('start')
+   challenge.game(game(0, 0, 100), 1000)
+   challenge.game(game(4, 4, 101), 122001)
+   assert.equal(challenge.snapshot().status, 'paused')
+   assert.equal(challenge.snapshot().completed, 0)
+ })
+ 
++test('stale cross-game rebase retires old pending before new-game progress', () => {
++  const challenge = configured()
++  challenge.action('start')
++  challenge.game(game(0, 30, 100), 1000)
++  challenge.action('pending', undefined, 1100)
++  challenge.game(game(0, 0, 5), 122001)
++  assert.equal(challenge.snapshot().status, 'paused')
++  assert.equal(challenge.snapshot().pending, 0)
++  challenge.action('start')
++  challenge.game(game(0, 0, 6), 122100)
++  challenge.game(game(1, 1, 7), 122200)
++  assert.equal(challenge.snapshot().completed, 2)
++})
++
++test('anomalous same-game rebases retire pending before later progress', () => {
++  for (const anomaly of ['identity', 'team', 'counter']) {
++    const challenge = configured()
++    challenge.action('start')
++    challenge.game(game(5, 30, 100), 1000)
++    challenge.action('pending', undefined, 1100)
++    const changed = game(anomaly === 'counter' ? 4 : 5, 30, 101)
++    if (anomaly === 'identity') {
++      changed.allPlayers[0].summonerName = 'different-player'
++      changed.activePlayer.summonerName = 'different-player'
++    }
++    if (anomaly === 'team') changed.allPlayers[0].team = 'CHAOS'
++    challenge.game(changed, 1200)
++    assert.equal(challenge.snapshot().status, 'paused', anomaly)
++    assert.equal(challenge.snapshot().pending, 0, anomaly)
++    challenge.action('start')
++    challenge.game(changed, 1400)
++    changed.allPlayers[0].scores.kills++
++    changed.gameData.gameTime = 102
++    challenge.game(changed, 1600)
++    assert.equal(challenge.snapshot().completed, 2, anomaly)
++  }
++})
++
++test('same-player team change across a verified new game continues running', () => {
++  const challenge = configured()
++  challenge.action('start')
++  challenge.game(game(0, 30, 100), 1000)
++  challenge.game(game(1, 31, 101), 1200)
++  const next = game(0, 0, 5)
++  next.allPlayers[0].team = 'CHAOS'
++  challenge.game(next, 1400)
++  assert.equal(challenge.snapshot().status, 'running')
++  next.allPlayers[0].scores.kills = 1
++  next.gameData.gameTime = 6
++  challenge.game(next, 1600)
++  assert.equal(challenge.snapshot().completed, 2)
++})
++
+ test('pending corrections reconcile only observed new progress', () => {
+   const challenge = configured()
+   challenge.action('start')
+   challenge.game(game(5, 30, 100), 1000)
+   challenge.action('pending', undefined, 1100)
+   assert.equal(challenge.snapshot().completed, 1)
+   challenge.game(game(6, 31, 101), 1200)
+   assert.equal(challenge.snapshot().completed, 1)
+   assert.equal(challenge.snapshot().pending, 0)
+   challenge.game(game(7, 32, 102), 1400)
+diff --git a/tests/fixtures/comment-platform.cjs b/tests/fixtures/comment-platform.cjs
+new file mode 100644
+index 0000000..318ff82
+--- /dev/null
++++ b/tests/fixtures/comment-platform.cjs
+@@ -0,0 +1,14 @@
++// Test-only platform with no likes, follows, gifts, or external network.
++const {createNormalizer}=require('../../electron/interaction-normalizer.cjs')
++module.exports=({onState})=>{
++  let account={status:'signed-out',profile:null},status='idle',normalizer=createNormalizer()
++  const login=()=>{account={status:'authenticated',profile:{id:'comment-account',nickname:'鑳藉姏娴嬭瘯璐﹀彿'}};onState()}
++  return {
++    descriptor:{id:'comment-only',name:'鑳藉姏娴嬭瘯骞冲彴',capabilities:{login:['official-window'],messages:['comment'],giftCatalog:false}},
++    getAccount:()=>account,getState:()=>({status}),login,refreshAccount:login,
++    logout(){account={status:'signed-out',profile:null};onState()},
++    parseRoom(input){if(!/^\d+$/.test(input))throw Error('娴嬭瘯鎴块棿鍙锋棤鏁?);return input},
++    connect(){status='connected';onState()},disconnect(){status='idle';onState()},dispose(){},
++    normalize:(event,scope)=>normalizer.normalize(event,scope),exportNormalizer:()=>normalizer.export(),restoreNormalizer(saved){normalizer=createNormalizer(saved)}
++  }
++}
+diff --git a/.review-final-fix/tests/interaction-normalizer.test.cjs b/tests/interaction-normalizer.test.cjs
+index 4794bd9..9487cdd 100644
+--- a/.review-final-fix/tests/interaction-normalizer.test.cjs
++++ b/tests/interaction-normalizer.test.cjs
+@@ -21,10 +21,22 @@ test('鐙珛璧犻€佷笉浼氭寜鐢ㄦ埛绀肩墿鍘婚噸锛涘懡鍚嶇┖闂撮殧绂伙紝缂哄け缁?   assert.equal(n.normalize({...gift,count:-1},scope),null)
+ })
+ 
+ test('explicitly mismatched raw provenance is rejected before dedup state changes',()=>{
+   const n=createNormalizer()
+   for(const field of ['platformId','accountScope','roomId']){
+     assert.equal(n.normalize({...gift,combo:false,id:field,count:1,[field]:'wrong'},scope),null)
+     assert.ok(n.normalize({...gift,combo:false,id:field,count:1},scope))
+   }
+ })
++
++test('unsafe combo omission has a safe reason but duplicate delivery has none',()=>{
++  const n=createNormalizer()
++  const unsafe=n.normalizeResult({...gift,groupId:'',count:1,credential:'secret'},scope)
++  assert.equal(unsafe.event,null)
++  assert.equal(unsafe.reason,'missing-combo-identity')
++  assert.equal(JSON.stringify(unsafe).includes('secret'),false)
++  const accepted=n.normalizeResult({...gift,count:1},scope)
++  assert.equal(accepted.event.count,1)
++  assert.equal(accepted.reason,null)
++  assert.deepEqual(n.normalizeResult({...gift,count:1},scope),{event:null,reason:null})
++})
+diff --git a/.review-final-fix/tests/product-flow.test.cjs b/tests/product-flow.test.cjs
+index 43836d0..4c64da9 100644
+--- a/.review-final-fix/tests/product-flow.test.cjs
++++ b/tests/product-flow.test.cjs
+@@ -1,21 +1,21 @@
+ const {test}=require('node:test'),assert=require('node:assert/strict')
+ const {createProduct}=require('../electron/product.cjs')
+ const {createNormalizer}=require('../electron/interaction-normalizer.cjs')
+ const rules={likesEnabled:true,likeEvery:100,followEnabled:true,follow:2,gifts:[{platformId:'douyin',giftId:'1',name:'绀肩墿',icon:'',reward:5}]}
+ function environment(){
+   const handles={};const factories={}
+   for(const id of ['douyin','other'])factories[id]=({onState,onEvent})=>{
+     let account={status:'signed-out',profile:null},state={status:'idle'},n=createNormalizer()
+     const api={descriptor:{id,name:id,capabilities:{login:['official-window'],messages:id==='douyin'?['like','follow','gift','comment','enter']:['comment'],giftCatalog:id==='douyin'}},
+       getAccount:()=>account,getState:()=>state,login(){account={status:'authenticated',profile:{id:'a',nickname:'璐﹀彿'}};onState()},refreshAccount(){},logout(){account={status:'signed-out',profile:null};onState()},parseRoom:input=>{if(!/^\d+$/.test(input))throw Error('鎴块棿鏃犳晥');return input},
+-      connect(){state={status:'connected'};onState()},disconnect(){state={status:'idle'}},dispose(){},getGiftCatalog:async()=>[{platformId:id,giftId:'1',name:'绀肩墿',icon:'https://example.com/g.png',price:1}],normalize:(e,scope)=>n.normalize(e,scope),exportNormalizer:()=>n.export(),restoreNormalizer:s=>{n=createNormalizer(s)}}
++      connect(){state={status:'connected'};onState()},disconnect(){state={status:'idle'}},dispose(){},getGiftCatalog:async()=>[{platformId:id,giftId:'1',name:'绀肩墿',icon:'https://example.com/g.png',price:1}],normalize:(e,scope)=>n.normalize(e,scope),normalizeResult:(e,scope)=>n.normalizeResult?n.normalizeResult(e,scope):{event:n.normalize(e,scope),reason:null},exportNormalizer:()=>n.export(),restoreNormalizer:s=>{n=createNormalizer(s)}}
+     handles[id]={event:onEvent,account:value=>{account=value;onState()},api};return api
+   }
+   const p=createProduct({app:{getPath:()=>'.'},smoke:true,adapterFactories:factories,globalShortcut:{},getWindow:()=>null,getOverlay:()=>null,openOverlay(){},switchMode(){}})
+   return {p,handles}
+ }
+ test('棣栨閫夋嫨骞冲彴銆佽璇併€佺‘璁ゆ埧闂淬€侀厤缃帺娉曪紝鐒跺悗寮€濮嬶紱鏂版埧闂村繀椤荤粨鏉熸棫鎸戞垬',async()=>{
+   const {p,handles}=environment()
+   try{
+     assert.equal(p.snapshot().setup.stage,'platform')
+     await p.action('selectPlatform','douyin');assert.equal(p.snapshot().setup.stage,'login')
+@@ -92,10 +92,27 @@ test('rule presets are isolated by platform, account, and room',async()=>{
+ test('gift rules from another platform are rejected before challenge configuration',async()=>{
+   const {p}=environment()
+   try{
+     await p.action('selectPlatform','douyin');await p.action('login');await p.action('confirmRoom','123')
+     const crossRules={...rules,gifts:[{...rules.gifts[0],platformId:'other'}]}
+     await assert.rejects(p.action('configureChallenge',{metricId:'champion-kills',target:20,rules:crossRules}))
+     assert.equal(p.snapshot().configured,false)
+     assert.equal(p.snapshot().target,10)
+   }finally{p.stop()}
+ })
++
++test('unsafe combo exposes bounded safe warning while duplicate delivery stays quiet',async()=>{
++  const {p,handles}=environment()
++  try{
++    await p.action('selectPlatform','douyin');await p.action('login');await p.action('confirmRoom','123')
++    await p.action('configureChallenge',{metricId:'champion-kills',target:10,rules});await p.action('start')
++    const like={id:'same',type:'like',count:100,userId:'u'}
++    handles.douyin.event(like);handles.douyin.event(like)
++    assert.equal(p.snapshot().interactionWarning,null)
++    for(let i=0;i<1100;i++)handles.douyin.event({id:`bad-${i}`,type:'gift',count:1,combo:true,giftId:'1',userId:'u',credential:'secret'})
++    const warning=p.snapshot().interactionWarning
++    assert.equal(warning.code,'missing-combo-identity')
++    assert.equal(warning.count,999)
++    assert.equal(JSON.stringify(warning).includes('secret'),false)
++    assert.equal(p.snapshot().target,11)
++  }finally{p.stop()}
++})
+diff --git a/tests/ui-rules.test.cjs b/tests/ui-rules.test.cjs
+new file mode 100644
+index 0000000..01050e4
+--- /dev/null
++++ b/tests/ui-rules.test.cjs
+@@ -0,0 +1,35 @@
++const { test } = require('node:test')
++const assert = require('node:assert/strict')
++const path = require('node:path')
++const Module = require('node:module')
++const { buildSync } = require('esbuild')
++const React = require('react')
++const { renderToStaticMarkup } = require('react-dom/server')
++
++function loadComponent(relativePath) {
++  const filename = path.resolve(__dirname, '..', relativePath)
++  const output = buildSync({ entryPoints: [filename], bundle: true, platform: 'node', format: 'cjs',
++    jsx: 'automatic', external: ['react', 'react-dom'], write: false }).outputFiles[0].text
++  const loaded = new Module(filename, module)
++  loaded.filename = filename
++  loaded.paths = Module._nodeModulePaths(path.dirname(filename))
++  loaded._compile(output, filename)
++  return loaded.exports
++}
++
++test('actual interaction form supplies disabled unsupported rules for comment-only platform', () => {
++  const { default: InteractionRules, defaultRules, rulesForCapabilities, normalizeRules } = loadComponent('src/components/InteractionRules.jsx')
++  const capabilities = { messages: ['comment'], giftCatalog: false }
++  const stalePreset = { likesEnabled: true, likeEvery: 100, followEnabled: true, follow: 3,
++    gifts: [{ platformId: 'other', giftId: '1', name: 'Old', icon: null, reward: 5 }] }
++  assert.deepEqual(defaultRules(capabilities), { likesEnabled: false, likeEvery: 100, followEnabled: false, follow: 1, gifts: [] })
++  const rules = rulesForCapabilities(stalePreset, capabilities)
++  assert.equal(rules.likesEnabled, false)
++  assert.equal(rules.followEnabled, false)
++  assert.deepEqual(rules.gifts, [])
++  assert.deepEqual(normalizeRules(stalePreset, capabilities), { likesEnabled: false, likeEvery: 100, followEnabled: false, follow: 1, gifts: [] })
++  const markup = renderToStaticMarkup(React.createElement(InteractionRules, {
++    rules, capabilities, catalog: { status: 'unsupported' }, onChange() {}
++  }))
++  assert.doesNotMatch(markup, /rules-like-every|rules-follow-reward|gift-picker-open/)
++})

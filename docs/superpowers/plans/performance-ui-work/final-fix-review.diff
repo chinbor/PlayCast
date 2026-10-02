@@ -1,0 +1,443 @@
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/electron/main.cjs b/electron/main.cjs
+index 46f01d9..26c4297 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/electron/main.cjs
++++ b/electron/main.cjs
+@@ -13,13 +13,13 @@ async function poll(){
+   try{
+     const data=mode==='mock'?mockGame(Math.floor((Date.now()-mockStarted)/1000)):await fetchGame()
+     if(rev!==generation||!main||main.isDestroyed())return
+     product.game(data,mode);ok=true
+     lastSnapshot={status:'connected',mode,data,updatedAt:Date.now(),requestMs:Math.round(performance.now()-start),intervalMs:200}
+   }catch(e){if(rev!==generation||!main||main.isDestroyed())return;lastSnapshot={status:'waiting',mode,message:e.code==='ECONNREFUSED'?'等待进入英雄联盟对局':e.message,updatedAt:Date.now()}}
+-  finally{if(rev===generation&&main&&!main.isDestroyed()){const {data,...summary}=lastSnapshot;product.collectorStatus(summary);const visible=product.display();if(gameSubscribed&&main.isVisible?.()!==false&&!main.isMinimized?.()&&(visible.source==='test'||visible.account.status==='authenticated')&&Date.now()-lastGameSent>=500){main.webContents.send('collector:snapshot',lastSnapshot);lastGameSent=Date.now()}timer=setTimeout(poll,ok?Math.max(0,200-(performance.now()-start)):1000)}}
++  finally{if(rev===generation&&main&&!main.isDestroyed()){const {data,...summary}=lastSnapshot;product.collectorStatus(summary);const visible=product.display();if(gameSubscribed&&main.isVisible?.()!==false&&!main.isMinimized?.()&&(visible.source==='test'||visible.account.status==='authenticated')&&Date.now()-lastGameSent>=500){main.webContents.send('collector:snapshot',{...lastSnapshot,contextVersion:visible.contextVersion});lastGameSent=Date.now()}timer=setTimeout(poll,ok?Math.max(0,200-(performance.now()-start)):1000)}}
+ }
+ const preferences=()=>({preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false})
+ async function load(w,hash=''){
+   w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault())
+   if(process.argv.includes('--dev'))await w.loadURL(`http://127.0.0.1:5188/${hash}`)
+   else await w.loadFile(path.join(__dirname,'../dist/index.html'),{hash:hash.replace('#','')})
+@@ -32,20 +32,20 @@ async function openOverlay(){
+ app.on('second-instance',()=>{main?.show();main?.focus()})
+ app.whenReady().then(async()=>{
+   if(smoke)await require('../tests/fixtures/account-response.cjs').installAvatarFixture(session.defaultSession)
+   main=new BrowserWindow({width:1360,height:920,minWidth:960,minHeight:700,show:!smoke&&!liveProbe,title:'Live Interaction Tool',autoHideMenuBar:true,webPreferences:preferences()})
+   const capabilitySmoke=smoke&&process.env.LIT_SMOKE_CASE==='capabilities'
+   const smokeAdapters=capabilitySmoke?{'comment-only':require('../tests/fixtures/comment-platform.cjs')}:smoke?{douyin:require('../tests/fixtures/smoke-platform.cjs')({BrowserWindow,session})}:undefined
+-  product=createProduct({app,BrowserWindow,session,safeStorage,accountRequest:smoke?require('../tests/fixtures/account-response.cjs'):undefined,adapterFactories:smokeAdapters,globalShortcut,smoke:smoke||!!liveProbe,getWindow:()=>main,getOverlay:()=>overlay,openOverlay,switchMode,onContextChange:()=>{gameSubscribed=false;lastGameSent=0}})
++  product=createProduct({app,BrowserWindow,session,safeStorage,accountRequest:smoke?require('../tests/fixtures/account-response.cjs'):undefined,adapterFactories:smokeAdapters,globalShortcut,smoke:smoke||!!liveProbe,getWindow:()=>main,getOverlay:()=>overlay,openOverlay,switchMode,onContextChange:version=>{gameSubscribed=false;lastGameSent=0;if(main&&!main.isDestroyed())main.webContents.send('product:context',version)}})
+   function trusted(event){if(event.sender!==main.webContents&&event.sender!==overlay?.webContents)throw new Error('无权访问')}
+   ipcMain.handle('product:get',event=>{trusted(event);return event.sender===main.webContents?product.display():product.overlay()})
+-  ipcMain.handle('product:query',(event,type,options)=>{if(event.sender!==main.webContents)throw new Error('无权访问');return product.query(type,options)})
++  ipcMain.handle('product:query',(event,type,options,requestedVersion)=>{if(event.sender!==main.webContents)throw new Error('无权访问');const version=product.display().contextVersion;if(requestedVersion!==undefined&&requestedVersion!==version)throw new Error('Product context changed');return Promise.resolve(product.query(type,options)).then(value=>{if(product.display().contextVersion!==version)throw new Error('Product context changed');return value})})
+   ipcMain.handle('product:action',(event,type,value)=>{if(event.sender!==main.webContents)throw new Error('无权操作');return product.action(type,value)})
+   const mayReadGame=()=>{const s=product.display();return s.source==='test'||s.account.status==='authenticated'}
+-  ipcMain.handle('collector:get',event=>{if(event.sender!==main.webContents)throw new Error('无权访问');return mayReadGame()?lastSnapshot:{status:'waiting',mode}})
+-  ipcMain.handle('collector:subscribe',(event,active)=>{if(event.sender!==main.webContents)throw new Error('无权访问');gameSubscribed=active===true;lastGameSent=0;return gameSubscribed})
++  ipcMain.handle('collector:get',event=>{if(event.sender!==main.webContents)throw new Error('无权访问');return {...(mayReadGame()?lastSnapshot:{status:'waiting',mode}),contextVersion:product.display().contextVersion}})
++  ipcMain.handle('collector:subscribe',(event,active,version)=>{if(event.sender!==main.webContents)throw new Error('无权访问');const current=product.display().contextVersion;if(version!==current)return false;gameSubscribed=active===true&&mayReadGame();lastGameSent=0;return gameSubscribed})
+   main.webContents.on('did-start-loading',()=>{gameSubscribed=false})
+   main.webContents.on('destroyed',()=>{gameSubscribed=false})
+   await load(main);poll()
+   main.on('close',event=>{if(!quitting){event.preventDefault();app.quit()}})
+   main.on('closed',()=>{generation++;clearTimeout(timer);gameSubscribed=false;app.quit()})
+   if(smoke){try{await require(capabilitySmoke?'../tests/capability-smoke.cjs':'../tests/guided-smoke.cjs')({main,product,app,openOverlay,getOverlay:()=>overlay});app.quit()}catch(e){console.error(e);app.exit(1)}}
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/electron/preload.cjs b/electron/preload.cjs
+index 67c427f..beebe75 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/electron/preload.cjs
++++ b/electron/preload.cjs
+@@ -1,14 +1,15 @@
+ const { contextBridge, ipcRenderer } = require('electron')
+ contextBridge.exposeInMainWorld('liveTool', {
+   getProduct: () => ipcRenderer.invoke('product:get'),
+-  productQuery: (type, options) => ipcRenderer.invoke('product:query', type, options),
+-  subscribeGameData: active => ipcRenderer.invoke('collector:subscribe', active),
++  productQuery: (type, options, contextVersion) => ipcRenderer.invoke('product:query', type, options, contextVersion),
++  subscribeGameData: (active, contextVersion) => ipcRenderer.invoke('collector:subscribe', active, contextVersion),
+   action: (type, value) => ipcRenderer.invoke('product:action', type, value),
+   getGame: () => ipcRenderer.invoke('collector:get'),
+   onProduct: callback => { const listener = (_e, data) => callback(data); ipcRenderer.on('product:state', listener); return () => ipcRenderer.removeListener('product:state', listener) },
++  onContextChange: callback => { const listener = (_e, version) => callback(version); ipcRenderer.on('product:context', listener); return () => ipcRenderer.removeListener('product:context', listener) },
+   onCorrection: callback => { const listener = () => callback(); ipcRenderer.on('product:correction', listener); return () => ipcRenderer.removeListener('product:correction', listener) },
+   onError: callback => { const listener = (_e, text) => callback(text); ipcRenderer.on('product:error', listener); return () => ipcRenderer.removeListener('product:error', listener) },
+   subscribe: callback => {
+     const listener = (_event, snapshot) => callback(snapshot)
+     ipcRenderer.on('collector:snapshot', listener)
+     return () => ipcRenderer.removeListener('collector:snapshot', listener)
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/electron/product.cjs b/electron/product.cjs
+index 4344bda..72ea58e 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/electron/product.cjs
++++ b/electron/product.cjs
+@@ -14,13 +14,13 @@ const allowedChallengeActions=new Set(['start','pause','end','finish','rules','t
+ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,giftRequest,adapterFactories,globalShortcut,smoke,getWindow,getOverlay,openOverlay,switchMode,onContextChange=()=>{}}){
+   const file=path.join(app.getPath('userData'),'challenge-v1.json')
+   let saved,error='',publishTimer,source='live',platforms,disposed=false,lastGame=null,giftAbort,giftLoading=false,interactionWarning=null
+   let readFailed=false,corruptPrimary=false
+   let cacheDirty=false,stopping,legacyFile=null
+   let persistScheduled=false,persistencePending=false
+-  let lastContext=null
++  let lastContext=null,contextVersion=0
+   let collector={status:'waiting',mode:'live'}
+   const store=smoke?null:createLocalStore(app.getPath('userData'),{onStatus:()=>changed(false)})
+   const object=value=>!!value&&typeof value==='object'&&!Array.isArray(value)
+   const text=value=>typeof value==='string'&&!!value.trim()
+   const natural=value=>Number.isSafeInteger(value)&&value>=0
+   const binding=value=>object(value)&&['platformId','accountScope','roomId'].every(key=>text(value[key]))
+@@ -110,13 +110,13 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+   function snapshot(full=true){
+     const adapter=platform(),isLive=source==='live',authenticated=!isLive||account().status==='authenticated'
+     const s=(isLive&&!authenticated?hiddenChallenge:current()).snapshot(!full),binding=scope()
+     s.interactionWarning=authenticated?interactionWarning:null
+     const visibleScope=isLive&&account().status==='authenticated'&&sameScope(confirmed,binding)?binding:null
+     const visibleAccount=isLive&&account().status==='authenticated'&&selected&&account().profile?.id?{platformId:selected,accountScope:account().profile.id}:null
+-    return {...s,collector,source,scope:isLive?visibleScope:demoScope(),historyVersion:(isLive?library:demoLibrary).version,giftVersion:catalog.version,feedVersion:(authenticated?feed():hiddenFeed).version,storage:store?.status()||{pending:false,error:null},room:authenticated?room:'',persistenceError:error||store?.status().error?.message||'',challengeSlots:isLive?library.slots(visibleScope):demoLibrary.slots(demoScope()),
++    return {...s,contextVersion,collector,source,scope:isLive?visibleScope:demoScope(),historyVersion:(isLive?library:demoLibrary).version,giftVersion:catalog.version,feedVersion:(authenticated?feed():hiddenFeed).version,storage:store?.status()||{pending:false,error:null},room:authenticated?room:'',persistenceError:error||store?.status().error?.message||'',challengeSlots:isLive?library.slots(visibleScope):demoLibrary.slots(demoScope()),
+       ...(full?{history:isLive?library.historyFor(visibleAccount):demoLibrary.historyFor(demoScope())}:{}),
+       douyin:adapter.getState?.()||{status:'idle'},platform:adapter.descriptor,platforms:platforms.list(),account:isLive?account():{status:'preview',profile:null,configured:false,message:'演练模式不读取真实账号'},
+       setup:isLive?setup():{stage:gameplayChoice?'gameplay':'workspace',complete:!gameplayChoice,platformId:selected},
+       metrics:METRICS.map(m=>({...m,...readMetric(authenticated?lastGame:null,m.id)})),rulePresets:structuredClone(isLive&&authenticated&&binding&&sameScope(confirmed,binding)?presets[scopeKey(binding)]||{}:{}),
+       ...(full?{giftCatalog:!adapter.descriptor.capabilities.giftCatalog?{items:[],status:'unsupported',message:'此平台不支持礼物目录'}:{...catalog.snapshot(isLive?visibleScope:null),loading:giftLoading},feed:(authenticated?feed():hiddenFeed).snapshot()}:{}),shortcuts,giftLoading,logsVersion:logsVersion(visibleLogState()),storage:{...(store?.status()||{error:null}),pending:persistencePending||!!store?.status().pending}}
+   }
+@@ -139,13 +139,13 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+           timestamp:Number.isSafeInteger(e.timestamp)&&e.timestamp>=0?e.timestamp:0,
+           payloadSize:Number.isSafeInteger(e.payloadSize)&&e.payloadSize>=0&&e.payloadSize<=8*1024*1024?e.payloadSize:0}
+       })
+       return {items,scope:visible?{...diagnosticScope}:null,limit:50}
+     }
+     if(type==='history')return {...collection.query(owner,options),version:collection.version}
+-    if(type==='historyDetail'){const identity=JSON.stringify(owner),origin=source;const value=await collection.detail(owner,options.id);const now=source==='test'?demoScope():account().status==='authenticated'&&selected&&account().profile?.id?{platformId:selected,accountScope:account().profile.id}:null;return origin===source&&identity===JSON.stringify(now)?value:null}
++    if(type==='historyDetail'){const identity=JSON.stringify(owner),origin=source,version=contextVersion;const value=await collection.detail(owner,options.id);const now=source==='test'?demoScope():account().status==='authenticated'&&selected&&account().profile?.id?{platformId:selected,accountScope:account().profile.id}:null;return version===contextVersion&&origin===source&&identity===JSON.stringify(now)?value:null}
+     if(type==='feed')return (source==='test'||authenticated&&sameScope(confirmed,scope())?feed():hiddenFeed).query(options)
+     if(type==='gifts'){if(!platform().descriptor.capabilities.giftCatalog)return {items:[],status:'unsupported',scope:null,loading:false,version:catalog.version};const b=source==='live'&&authenticated&&sameScope(confirmed,scope())?scope():null;const c=catalog.snapshot(b);return {items:c.items,status:c.status,message:c.message,scope:c.scope,loading:giftLoading,version:catalog.version}}
+     if(type==='storage')return store?store.usage():{categories:{hot:0,history:0,cache:0,recovery:0},total:0,pending:false,error:null}
+     throw Error('Unsupported query')
+   }
+   function broadcast(){if(!platforms||disposed)return;const w=getWindow(),o=getOverlay();if(w&&!w.isDestroyed())w.webContents.send('product:state',display());if(o&&!o.isDestroyed())o.webContents.send('product:state',overlay())}
+@@ -171,13 +171,13 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+     }
+     return {pending:false,error:readFailed?{category:'recovery',message:error}:null}
+   }
+   async function requireDurable(){const result=await flush();if(result.error)throw Object.assign(Error(`${result.error.category==='recovery'?'存档恢复失败':'保存失败'}：${result.error.message}`),{code:'PERSISTENCE_ERROR',category:result.error.category});return result}
+   function changed(save=true){
+     if(disposed)return
+-    if(platforms){const context=JSON.stringify([source,selected,account().status,account().profile?.id,room,confirmed]);if(context!==lastContext){lastContext=context;onContextChange()}}
++    if(platforms){const context=JSON.stringify([source,selected,account().status,account().profile?.id,room,confirmed]);if(context!==lastContext){lastContext=context;contextVersion++;onContextChange(contextVersion)}}
+     if(save){persistencePending=true;if(!persistScheduled){persistScheduled=true;queueMicrotask(()=>{persistScheduled=false;if(persistencePending){persistencePending=false;persist()}})}}
+     if(!publishTimer)publishTimer=setTimeout(()=>{publishTimer=undefined;broadcast()},250)
+   }
+   function cancelGifts(){giftAbort?.abort();giftAbort=null;giftLoading=false}
+   function onState(id){
+     if(!platforms||id!==selected){changed(false);return}
+
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/src/browser-preview.js b/src/browser-preview.js
+index 2ccc1aa..d1b7a86 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/src/browser-preview.js
++++ b/src/browser-preview.js
+@@ -10,23 +10,23 @@ export function createPreview(){
+   const drafts=new Map()
+   state.history=[];state.challengeSlots=[]
+   const challengeFields=['id','configured','status','metricId','metric','target','completed','remaining','auto','adjustment','pending','rules','logs','createdAt','startedAt']
+   const challengeSnapshot=()=>structuredClone(Object.fromEntries(challengeFields.map(key=>[key,state[key]])))
+   const park=()=>{if(state.configured&&state.status!=='ended'){state.status='paused';drafts.set(state.metricId,challengeSnapshot())}}
+   let generation=1
+-  const snapshot=()=>{state.challengeSlots=[...drafts.values()].map(({id,metricId,status,target,completed})=>({id,metricId,status,target,completed}));const {history,giftCatalog,feed,logs,game,...display}=state;return structuredClone({...display,scope:null,historyVersion:history.length,giftVersion:0,feedVersion:`${generation}:${feed.total}:${feed.messages.length}`,logsVersion:logs[0]?.id||null,collector:{status:'connected',mode:'mock',requestMs:1},storage:{pending:false,revision:0,savedRevision:0,error:null}})}
++  const snapshot=()=>{state.challengeSlots=[...drafts.values()].map(({id,metricId,status,target,completed})=>({id,metricId,status,target,completed}));const {history,giftCatalog,feed,logs,game,...display}=state;return structuredClone({...display,contextVersion:0,scope:null,historyVersion:history.length,giftVersion:0,feedVersion:`${generation}:${feed.total}:${feed.messages.length}`,logsVersion:logs[0]?.id||null,collector:{status:'connected',mode:'mock',requestMs:1},storage:{pending:false,revision:0,savedRevision:0,error:null}})}
+   return {getProduct:async()=>snapshot(),subscribeGameData:async()=>{},productQuery:async(type,options={})=>{
+       if(type==='history'){const filtered=state.history.filter(r=>(!options.metricId||r.metricId===options.metricId)&&(!options.result||r.result===options.result));const page=options.page||1;return structuredClone({items:filtered.slice((page-1)*20,page*20).map(({logs,rules,contributions,...r})=>r),page,pageSize:20,total:filtered.length,completedCount:state.history.filter(r=>r.result==='completed').length,version:state.history.length})}
+       if(type==='historyDetail')return structuredClone(state.history.find(r=>r.id===options.id)||null)
+       if(type==='gifts')return {...structuredClone(state.giftCatalog),scope:null,version:0}
+       if(type==='challengeLog')return {items:structuredClone(state.logs),challengeId:state.id,scope:null,version:state.logs[0]?.id||null,limit:300}
+       if(type==='diagnostics')return {items:[],scope:null,limit:50}
+       if(type==='storage')return {categories:{hot:0,history:0,cache:0,recovery:0},total:0,pending:false,error:null,revision:0,savedRevision:0}
+       if(type==='feed'){const reset=options.generation!==String(generation)||!Number.isFinite(options.after)||options.after>state.feed.total||options.after<(state.feed.messages[0]?.rowId||0)-1;return {...structuredClone(state.feed),generation:String(generation),reset,after:state.feed.total,messages:structuredClone(reset?state.feed.messages:state.feed.messages.filter(m=>m.rowId>options.after))}}
+       throw Error('Unsupported query')
+-    },getGame:async()=>({status:'connected',mode:'mock',requestMs:1}),onProduct:cb=>{listeners.add(cb);return()=>listeners.delete(cb)},subscribe:()=>()=>{},onError:()=>()=>{},onCorrection:()=>()=>{},
++    },getGame:async()=>({contextVersion:0,status:'connected',mode:'mock',requestMs:1}),onProduct:cb=>{listeners.add(cb);return()=>listeners.delete(cb)},subscribe:()=>()=>{},onError:()=>()=>{},onCorrection:()=>()=>{},
+     action:async(type,value)=>{
+       if(type==='chooseGameplay'){park();state.setup.stage='gameplay'}
+       else if(type==='resumeChallenge'){const saved=drafts.get(value);if(!saved)throw Error('没有此玩法的示例存档');park();Object.assign(state,structuredClone(saved));state.setup.stage='workspace'}
+       else if(type==='finish'||type==='end'){
+         if(type==='finish'&&state.completed<state.target)throw Error('尚未达到目标')
+         if(!state.history.some(record=>record.id===state.id))state.history.unshift({...challengeSnapshot(),endedAt:Date.now(),result:state.completed>=state.target?'completed':'ended-early',binding:{roomId:'演示'},contributionsComplete:false})
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/src/components/ChallengeHistory.jsx b/src/components/ChallengeHistory.jsx
+index 09ea79c..7818ecd 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/src/components/ChallengeHistory.jsx
++++ b/src/components/ChallengeHistory.jsx
+@@ -34,16 +34,18 @@ function HistoryRecord({record,api,scope}) {
+   return <article className="history-record" data-testid="history-row" data-result={record.result}>
+     <div className="history-record-heading"><span className={`icon-tile ${record.result==='completed'?'mint':'yellow'}`}><Icon name={record.result==='completed'?'trophy':'pause'}/></span><div className="history-record-title"><h3>{record.metric?.label||record.metricId}挑战</h3><p>直播间 {record.binding?.roomId||'演示'} · {formatTime(record.endedAt)}</p></div><span className={`history-result ${record.result}`}>{resultLabels[record.result]||'已结束'}</span><div className="history-score"><b>{record.completed}</b><span> / {record.target}</span><small>最终进度 / 目标</small></div></div>
+     <details data-testid="history-detail" onToggle={e=>setOpen(e.currentTarget.open)}><summary>查看这次挑战</summary>{open&&(detail.loading?<p role="status">正在读取记录…</p>:detail.error?<p role="alert">{detail.error}</p>:<HistoryDetails record={detail.data||record}/>)}</details>
+   </article>
+ }
+ 
++export function HistorySummary({completedCount,total}){return <p>账号累计完成 {completedCount??'—'} 次 · 当前筛选 {total??'—'} 条</p>}
++
+ export default function ChallengeHistory({api,scope='',version=0,history=[],metrics=[]}) {
+   const [metricId,setMetricId]=useState('all'),[result,setResult]=useState('all'),[page,setPage]=useState(1),[retry,setRetry]=useState(0)
+   const query=useQuery(api,'history',{page,...(metricId!=='all'?{metricId}:{}),...(result!=='all'?{result}:{})},scope+':'+version+':'+retry)
+   const data=api?query.data:{items:history,total:history.length,completedCount:history.filter(r=>r.result==='completed').length,pageSize:20}
+   const options=[...new Map([...metrics,...(data?.items||[]).map(r=>({id:r.metricId,label:r.metric?.label||r.metricId}))].map(m=>[m.id,m])).values()]
+-  return <div className="history-page"><div className="page-intro"><div><span className="setup-kicker">每一次挑战，都值得记录</span><h1>挑战历史</h1><p>当前账号的结算记录 · 已完成 {data?.completedCount??'—'} 次 · 共 {data?.total??'—'} 次</p></div><span className="icon-tile yellow history-trophy"><Icon name="trophy" size={30}/></span></div>
++  return <div className="history-page"><div className="page-intro"><div><span className="setup-kicker">每一次挑战，都值得记录</span><h1>挑战历史</h1><HistorySummary completedCount={data?.completedCount} total={data?.total}/></div><span className="icon-tile yellow history-trophy"><Icon name="trophy" size={30}/></span></div>
+     <div className="history-toolbar"><label>玩法<Select label="筛选玩法" data-testid="history-metric-filter" value={metricId} options={[{value:'all',label:'全部玩法'},...options.map(m=>({value:m.id,label:m.label}))]} onChange={v=>{setMetricId(v);setPage(1)}}/></label><label>结果<Select label="筛选结果" data-testid="history-result-filter" value={result} options={[{value:'all',label:'全部结果'},{value:'completed',label:'已完成'},{value:'ended-early',label:'提前结束'}]} onChange={v=>{setResult(v);setPage(1)}}/></label><span>每页 20 条 · 仅存本机</span></div>
+     {api&&query.loading?<p role="status">正在读取挑战历史…</p>:api&&query.error?<div role="alert">{query.error}<button onClick={()=>setRetry(n=>n+1)}>重试</button></div>:data?.items.length?<><div className="history-list">{data.items.map(record=><HistoryRecord key={record.id} record={record} api={api} scope={scope}/>)}</div><div className="history-pagination"><button disabled={page===1} onClick={()=>setPage(n=>n-1)}>上一页</button><span>第 {page} / {Math.max(1,Math.ceil(data.total/20))} 页</span><button disabled={page*20>=data.total} onClick={()=>setPage(n=>n+1)}>下一页</button></div></>:<div className="history-empty" data-testid="history-empty"><span className="icon-tile lilac"><Icon name="trophy" size={28}/></span><h3>{metricId!=='all'||result!=='all'?'没有符合筛选的挑战':'还没有结算过的挑战'}</h3><p>完成或提前结束后，记录会保存在这里。<br/>暂停、切换玩法和退出登录不会结算挑战。</p></div>}
+   </div>
+ }
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/src/components/Select.jsx b/src/components/Select.jsx
+index 5977e30..0ae1fa5 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/src/components/Select.jsx
++++ b/src/components/Select.jsx
+@@ -1,22 +1,30 @@
+ import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react'
+ import {createPortal} from 'react-dom'
+ 
++export function optionIndex(options,active,key){
++  if(!options.length)return -1
++  const direction=key==='End'||key==='ArrowUp'?-1:1
++  let index=key==='Home'?0:key==='End'?options.length-1:(active+direction+options.length)%options.length
++  for(let count=0;count<options.length;count++,index=(index+direction+options.length)%options.length)if(!options[index].disabled)return index
++  return -1
++}
++
+ export default function Select({value,options,onChange,label,disabled=false,error=false,...props}){
+   const id=useId(),trigger=useRef(null),menu=useRef(null),typed=useRef({text:'',at:0})
+   const [open,setOpen]=useState(false),[active,setActive]=useState(0),[position,setPosition]=useState({})
+   const selected=options.findIndex(o=>o.value===value)
+   function close(focus=false){setOpen(false);if(focus)trigger.current?.focus()}
+-  function show(){if(disabled)return;setActive(Math.max(0,selected));setOpen(true)}
++  function show(){if(disabled)return;const index=selected>=0&&!options[selected].disabled?selected:optionIndex(options,0,'Home');if(index<0)return;setActive(index);setOpen(true)}
+   function choose(index){if(!options[index]||options[index].disabled)return;onChange(options[index].value);close(true)}
+   useLayoutEffect(()=>{if(!open)return;function place(){const r=trigger.current.getBoundingClientRect(),below=innerHeight-r.bottom-12,above=r.top-12,up=below<180&&above>below;setPosition({position:'fixed',left:Math.max(8,Math.min(r.left,innerWidth-Math.max(r.width,190)-8)),width:Math.min(Math.max(r.width,190),innerWidth-16),maxHeight:Math.min(300,up?above:below),...(up?{bottom:innerHeight-r.top+6}:{top:r.bottom+6})})}place();addEventListener('resize',place);addEventListener('scroll',place,true);return()=>{removeEventListener('resize',place);removeEventListener('scroll',place,true)}},[open])
+   useEffect(()=>{if(!open)return;function outside(e){if(!trigger.current?.contains(e.target)&&!menu.current?.contains(e.target))close()}document.addEventListener('pointerdown',outside);return()=>document.removeEventListener('pointerdown',outside)},[open])
+   useEffect(()=>{if(open)menu.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({block:'nearest'})},[active,open])
+   function key(e){
+     if(e.key==='Tab'){close();return}
+     if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();close(true);return}
+-    if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();if(!open){show();return}let next=e.key==='Home'?0:e.key==='End'?options.length-1:active+(e.key==='ArrowDown'?1:-1);next=(next+options.length)%options.length;for(let i=0;i<options.length&&options[next]?.disabled;i++)next=(next+(e.key==='ArrowUp'?-1:1)+options.length)%options.length;setActive(next);return}
++    if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();if(!open){show();return}const next=optionIndex(options,active,e.key);if(next>=0)setActive(next);return}
+     if(e.key==='Enter'||e.key===' '){e.preventDefault();open?choose(active):show();return}
+     if(e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();const now=Date.now();typed.current={text:(now-typed.current.at<650?typed.current.text:'')+e.key.toLowerCase(),at:now};const index=options.findIndex(o=>!o.disabled&&o.label.toLowerCase().startsWith(typed.current.text));if(index>=0){if(!open)setOpen(true);setActive(index)}}
+   }
+   return <><button {...props} ref={trigger} type="button" className="custom-select" role="combobox" aria-label={label} aria-expanded={open} aria-controls={id} aria-haspopup="listbox" aria-activedescendant={open?`${id}-${active}`:undefined} aria-invalid={error||undefined} disabled={disabled} onKeyDown={key} onClick={()=>open?close():show()}>{options[selected]?.label||'请选择'}<span aria-hidden="true">⌄</span></button>{open&&createPortal(<div ref={menu} id={id} role="listbox" aria-label={label} className="select-menu" style={position}>{options.map((o,i)=><div id={`${id}-${i}`} key={o.value} role="option" aria-selected={o.value===value} aria-disabled={o.disabled||undefined} data-value={o.value} data-index={i} className={active===i?'focused':''} onPointerMove={()=>!o.disabled&&setActive(i)} onMouseDown={e=>e.preventDefault()} onClick={()=>choose(i)}><span>{o.label}</span>{o.value===value&&<span aria-hidden="true">✓</span>}</div>)}</div>,trigger.current.closest('dialog')||document.body)}</>
+ }
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/src/main.jsx b/src/main.jsx
+index 7214dd9..6e5d461 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/src/main.jsx
++++ b/src/main.jsx
+@@ -1,7 +1,7 @@
+-import React,{useEffect,useRef,useState} from 'react'
++import React,{useEffect,useMemo,useRef,useState} from 'react'
+ import {createRoot} from 'react-dom/client'
+ import 'virtual:uno.css'
+ import './style.css'
+ import './layout.css'
+ import './account.css'
+ import './setup.css'
+@@ -29,30 +29,36 @@ function NumberEditor({s,act,onClose}) {
+   return <Modal title="校正挑战进度" onClose={onClose}><div className="editor-body">{error&&<p role="alert" className="inline-error">{error}</p>}<p className="muted">校正不会被下一次游戏数据刷新覆盖；之后的新进度会继续累加。</p><label className="form-label">当前完成数量<input autoFocus id="correct-count" type="number" min="0" max="1000000" value={done} onChange={e=>setDone(e.target.value)}/></label><button className="button-primary" disabled={saving} onClick={()=>save('completed',done)}>保存进度</button><div className="form-divider"/><label className="form-label">当前目标<input type="number" min="0" max="1000000" value={target} onChange={e=>setTarget(e.target.value)}/></label><button disabled={saving} onClick={()=>save('target',target)}>保存目标</button></div></Modal>
+ }
+ 
+ function App({api,preview=false}){
+   const [s,setS]=useState(null),[game,setGame]=useState({}),[tab,setTab]=useState('game'),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false)
+   const [settings,setSettings]=useState(null),[editor,setEditor]=useState(false),[accountOpen,setAccountOpen]=useState(false)
++  const [contextVersion,setContextVersion]=useState(0),contextRef=useRef(0)
++  const contextReady=(s?.contextVersion??0)===contextVersion
++  function receiveProduct(value){const version=value.contextVersion??0;if(version<contextRef.current)return false;contextRef.current=version;setContextVersion(version);setS(value);return true}
++  const queryApi=useMemo(()=>!contextReady?null:{productQuery:async(type,options)=>{const value=await api.productQuery(type,options,contextVersion);if(contextRef.current!==contextVersion)throw Error('Product context changed');return value}},[api,contextVersion,contextReady])
+   const hasAccess=!!s&&(s.source==='test'||s.account?.status==='authenticated')
+   const accessRef=useRef(false)
+-  accessRef.current=hasAccess
++  accessRef.current=hasAccess&&contextReady
+   const giftRequest=useRef('')
+   const scope=scopeKey(s)
++  const dataScope=scope+':'+contextVersion
+   const overlay=location.hash==='#overlay'
+   useEffect(()=>{
+     if(!api){setError('请通过 Electron 打开应用。');return}
+-    const off=api.onProduct(setS),offError=api.onError(setError),offCorrection=api.onCorrection(()=>{if(!accessRef.current)return;setSettings(null);setTab('game');setEditor(true)})
+-    api.getProduct().then(setS).catch(e=>setError(e.message))
+-    return()=>{off();offError();offCorrection()}
++    const offContext=api.onContextChange?.(version=>{if(version>contextRef.current){contextRef.current=version;setContextVersion(version)}})||(()=>{})
++    const off=api.onProduct(receiveProduct),offError=api.onError(setError),offCorrection=api.onCorrection(()=>{if(!accessRef.current)return;setSettings(null);setTab('game');setEditor(true)})
++    api.getProduct().then(receiveProduct).catch(e=>setError(e.message))
++    return()=>{off();offContext();offError();offCorrection()}
+   },[api])
+-  useEffect(()=>{if(!api||overlay||!hasAccess||tab!=='data')return;let current=true;const off=api.subscribe(value=>{if(current)setGame({...value,scope})});setGame({});api.subscribeGameData(true).catch(()=>{});api.getGame().then(value=>{if(current)setGame({...value,scope})}).catch(()=>{});return()=>{current=false;off();api.subscribeGameData(false).catch(()=>{})}},[api,overlay,hasAccess,tab,scope])
+-  const gifts=useQuery(api,'gifts',{},scope+':'+s?.giftVersion+':'+s?.giftLoading,hasAccess&&!overlay&&((tab==='game'&&s?.setup?.stage==='gameplay')||settings==='rules'))
++  useEffect(()=>{if(!api||overlay||!hasAccess||!contextReady||tab!=='data')return;let current=true;const accept=value=>{if(current&&contextRef.current===contextVersion&&value.contextVersion===contextVersion)setGame({...value,scope:dataScope})};const off=api.subscribe(accept);setGame({});api.subscribeGameData(true,contextVersion).catch(()=>{});api.getGame().then(accept).catch(()=>{});return()=>{current=false;off();api.subscribeGameData(false,contextVersion).catch(()=>{})}},[api,overlay,hasAccess,contextReady,tab,dataScope,contextVersion])
++  const gifts=useQuery(queryApi,'gifts',{},dataScope+':'+s?.giftVersion+':'+s?.giftLoading,hasAccess&&!overlay&&((tab==='game'&&s?.setup?.stage==='gameplay')||settings==='rules'))
+   useEffect(()=>{setSettings(null);setEditor(false);setAccountOpen(false);setTab('game')},[scope])
+   useEffect(()=>{if(!hasAccess){setSettings(null);setEditor(false);setAccountOpen(false);setNotice('');setTab('game')}},[hasAccess])
+   useEffect(()=>{if(!notice)return;const t=setTimeout(()=>setNotice(''),3500);return()=>clearTimeout(t)},[notice])
+-  async function act(type,value){setBusy(true);setError('');try{const result=await api.action(type,value);setS(result);if(type==='rules')setNotice('规则已保存，之后的互动按新规则计算。');if(['finish','end'].includes(type)){setTab('history');setSettings(null);setEditor(false)}if(['chooseGameplay','resumeChallenge','configureChallenge','source'].includes(type)){setTab('game');setSettings(null);setEditor(false)}return result}catch(e){setError(e.message);return null}finally{setBusy(false)}}
++  async function act(type,value){setBusy(true);setError('');try{const result=await api.action(type,value);receiveProduct(result);if(type==='rules')setNotice('规则已保存，之后的互动按新规则计算。');if(['finish','end'].includes(type)){setTab('history');setSettings(null);setEditor(false)}if(['chooseGameplay','resumeChallenge','configureChallenge','source'].includes(type)){setTab('game');setSettings(null);setEditor(false)}return result}catch(e){setError(e.message);return null}finally{setBusy(false)}}
+   async function refreshGifts(){try{const result=await api.action('refreshGifts');setS(result);return result}catch(e){setError(e.message);return null}}
+   useEffect(()=>{if(!s||s.source!=='live'||s.setup?.stage!=='gameplay'||!s.setup?.roomConfirmed){giftRequest.current='';return}const key=`${s.setup.platformId}:${s.account?.profile?.id}:${s.room}`;if(giftRequest.current===key)return;giftRequest.current=key;if(s.platform?.capabilities?.giftCatalog&&!s.giftLoading)refreshGifts()},[s?.setup?.stage,s?.setup?.roomConfirmed,s?.setup?.platformId,s?.account?.profile?.id,s?.room,s?.source])
+   if(!s||(s.source==='live'&&s.account?.status==='checking'))return <main className="loading" data-testid="auth-loading" role="status"><div className="app-logo"><Icon name="chat"/></div><p>{error||(s?'正在验证登录状态…':'正在准备应用…')}</p></main>
+   if(overlay&&!hasAccess)return <main className="loading"><p>请在主窗口登录后查看挑战</p></main>
+   const view={...s,giftCatalog:gifts.data||{items:[],status:gifts.error?'error':'loading',message:gifts.error,loading:gifts.loading}}
+   const d=s.douyin||{},progress=s.target?Math.min(100,s.completed/s.target*100):0
+@@ -62,18 +68,19 @@ function App({api,preview=false}){
+   function navigateTabs(e){if(e.ctrlKey||e.altKey||e.metaKey||!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const index=workspaceTabs.findIndex(([id])=>id===tab);const next=workspaceTabs[e.key==='Home'?0:e.key==='End'?workspaceTabs.length-1:(index+(e.key==='ArrowRight'?1:-1)+workspaceTabs.length)%workspaceTabs.length][0];setTab(next);document.getElementById(`tab-${next}`)?.focus()}
+   return <div className="app-shell"><header className="app-header"><div className="brand"><div className="app-logo"><Icon name="chat" size={25}/><i/></div><div><b>直播互动工具</b><span>Live Interaction Tool</span></div></div>{hasAccess&&<><div className="header-status"><span><i className={`status-dot ${s.source==='test'||d.status==='connected'?'connected':''}`}/>{s.source==='test'?'演示直播间':d.status==='connected'?'直播间已连接':'直播间未连接'}</span><span><i className={`status-dot ${s.collector?.status==='connected'?'connected':''}`}/>游戏{s.collector?.status==='connected'?'已连接':'未连接'}</span></div><div className="header-actions"><button className="account-trigger" aria-label="个人空间" onClick={()=>setAccountOpen(true)}><AccountAvatar key={`${s.platform?.id}:${s.account?.profile?.id}:${s.account?.profile?.avatar}`} src={s.account?.profile?.avatar} name={s.account?.profile?.nickname} compact/><span className="account-name">{s.account?.profile?.nickname||'个人空间'}</span></button><button className="settings-button" aria-label="打开设置" onClick={()=>setSettings('connections')}><Icon name="settings" size={19}/><span>设置</span></button></div></>}</header>
+     <div className={`workspace ${!hasAccess?'setup-workspace':''}`}>{hasAccess&&<div className="navigation-row"><nav className="main-tabs" role="tablist" aria-label="工作台页面" onKeyDown={navigateTabs}>{workspaceTabs.map(([id,label,icon])=><button role="tab" id={`tab-${id}`} aria-controls={`panel-${id}`} aria-selected={tab===id} tabIndex={tab===id?0:-1} data-testid={`tab-${id}`} key={id} className={tab===id?'active':''} onClick={()=>setTab(id)}><Icon name={icon} size={21}/>{id==='game'&&settingUp?'选择玩法':label}</button>)}</nav><span className="workspace-caption"><span className="tiny-star">✦</span> 每个玩法，各有一份小目标</span></div>}
+     {(preview||s.source==='test')&&<div className="demo-banner"><Icon name="spark" size={17}/>{preview?'浏览器视觉预览 · 所有数据均为示例':'演示模式 · 不会更改正式挑战存档'}</div>}
+     {(error||s.persistenceError)&&<div className="notice error" role="alert">{error||s.persistenceError}<button className="icon-button" aria-label="关闭错误提示" onClick={()=>setError('')}><Icon name="close" size={16}/></button></div>}
+     {notice&&<div className="toast" role="status"><Icon name="check" size={16}/>{notice}</div>}
+-    {(!hasAccess||tab==='game')&&<section role={hasAccess?'tabpanel':undefined} id="panel-game" className={settingUp?'setup-panel-host':''} aria-labelledby={hasAccess?'tab-game':undefined} hidden={hasAccess&&tab!=='game'}>{settingUp?(s.source==='test'?<div className="setup-flow"><div className="setup-scroll"><GameplaySetup key={`test:${s.id}`} s={{...view,giftCatalog:{status:'unsupported',message:'演示模式不加载平台礼物目录'}}} act={act} refreshGifts={()=>{}} busy={busy}/></div></div>:<SetupFlow key={`${hasAccess}:${s.account?.profile?.id}`} s={view} act={act} refreshGifts={refreshGifts} busy={busy}/>):<GameProgress key={`${s.source}:${s.id}`} s={s} game={s.collector||{}} api={api} scope={scope} act={act} busy={busy} openSettings={setSettings} openCorrection={()=>setEditor(true)} refreshGifts={refreshGifts}/>}</section>}
+-    {hasAccess&&<>{tab==='messages'&&<section key={scope} role="tabpanel" id="panel-messages" aria-labelledby="tab-messages"><MessagePanel active s={s} api={api} scope={scope} act={act} busy={busy} openSettings={setSettings}/></section>}{tab==='data'&&<section key={scope} role="tabpanel" id="panel-data" aria-labelledby="tab-data"><DataPanels data={game.scope===scope?game.data:undefined}/></section>}{tab==='history'&&<section key={scope} role="tabpanel" id="panel-history" aria-labelledby="tab-history"><ChallengeHistory api={api} scope={scope} version={s.historyVersion} metrics={s.metrics}/></section>}
++    {contextReady&&(!hasAccess||tab==='game')&&<section role={hasAccess?'tabpanel':undefined} id="panel-game" className={settingUp?'setup-panel-host':''} aria-labelledby={hasAccess?'tab-game':undefined} hidden={hasAccess&&tab!=='game'}>{settingUp?(s.source==='test'?<div className="setup-flow"><div className="setup-scroll"><GameplaySetup key={`test:${s.id}`} s={{...view,giftCatalog:{status:'unsupported',message:'演示模式不加载平台礼物目录'}}} act={act} refreshGifts={()=>{}} busy={busy}/></div></div>:<SetupFlow key={`${hasAccess}:${s.account?.profile?.id}`} s={view} act={act} refreshGifts={refreshGifts} busy={busy}/>):<GameProgress key={`${s.source}:${s.id}`} s={s} game={s.collector||{}} api={queryApi} scope={dataScope} act={act} busy={busy} openSettings={setSettings} openCorrection={()=>setEditor(true)} refreshGifts={refreshGifts}/>}</section>}
++    {hasAccess&&!contextReady&&<p role="status">正在更新连接状态…</p>}
++    {hasAccess&&contextReady&&<>{tab==='messages'&&<section key={dataScope} role="tabpanel" id="panel-messages" aria-labelledby="tab-messages"><MessagePanel active s={s} api={queryApi} scope={dataScope} act={act} busy={busy} openSettings={setSettings}/></section>}{tab==='data'&&<section key={dataScope} role="tabpanel" id="panel-data" aria-labelledby="tab-data"><DataPanels data={game.scope===dataScope?game.data:undefined}/></section>}{tab==='history'&&<section key={dataScope} role="tabpanel" id="panel-history" aria-labelledby="tab-history"><ChallengeHistory api={queryApi} scope={dataScope} version={s.historyVersion} metrics={s.metrics}/></section>}
+     <footer className="app-footer"><span><i className={`status-dot ${s.persistenceError?'':'connected'}`}/>{s.persistenceError?'存档异常，请勿直接关闭程序':s.storage?.pending?'正在保存本地进度…':s.source==='live'?'各玩法进度与挑战历史自动保存在本机':'演示数据不会写入正式存档'}</span><span>好好玩，也好好直播 <span className="footer-heart">♥</span></span></footer></>}</div>
+-    {hasAccess&&settings&&<Modal title="工作台设置" onClose={()=>setSettings(null)} wide><Settings key={`${scope}:${s.id}`} s={view} game={s.collector||{}} api={api} scope={scope} openAccount={()=>{setSettings(null);setAccountOpen(true)}} act={act} busy={busy} section={settings} setSection={setSettings} preview={preview} refreshGifts={refreshGifts}/></Modal>}
+-    {hasAccess&&editor&&<NumberEditor s={s} act={act} onClose={()=>setEditor(false)}/>}
+-    {hasAccess&&accountOpen&&<Modal title="个人空间" onClose={()=>setAccountOpen(false)}><AccountPanel account={s.account} platform={s.platform} act={act} busy={busy} preview={preview}/></Modal>}
++    {hasAccess&&contextReady&&settings&&<Modal title="工作台设置" onClose={()=>setSettings(null)} wide><Settings key={`${scope}:${s.id}`} s={view} game={s.collector||{}} api={queryApi} scope={dataScope} openAccount={()=>{setSettings(null);setAccountOpen(true)}} act={act} busy={busy} section={settings} setSection={setSettings} preview={preview} refreshGifts={refreshGifts}/></Modal>}
++    {hasAccess&&contextReady&&editor&&<NumberEditor s={s} act={act} onClose={()=>setEditor(false)}/>}
++    {hasAccess&&contextReady&&accountOpen&&<Modal title="个人空间" onClose={()=>setAccountOpen(false)}><AccountPanel account={s.account} platform={s.platform} act={act} busy={busy} preview={preview}/></Modal>}
+   </div>
+ }
+ const root=createRoot(document.getElementById('root'))
+ if(import.meta.hot)import.meta.hot.dispose(()=>root.unmount())
+ if(import.meta.env.DEV&&!window.liveTool){import('./browser-preview').then(({createPreview})=>root.render(<App api={createPreview()} preview/>))}
+ else root.render(<App api={window.liveTool}/> )
+
+diff --git a/tests/context-ui-smoke.cjs b/tests/context-ui-smoke.cjs
+new file mode 100644
+index 0000000..937f969
+--- /dev/null
++++ b/tests/context-ui-smoke.cjs
+@@ -0,0 +1,24 @@
++const assert=require('node:assert/strict')
++module.exports=async({main,product,run,wait,until,click})=>{
++  await click('[data-testid="tab-data"]')
++  await run('window.__contextRaw=0;window.__contextOff=window.liveTool.subscribe(()=>window.__contextRaw++);void 0')
++  await until('window.__contextRaw>0')
++  await product.action('refreshAuth');await wait(350)
++  assert.equal(await run('document.querySelector("[data-testid=tab-data]").getAttribute("aria-selected")'),'true','Fast same-account refresh preserves selected data tab')
++  const count=await run('window.__contextRaw');await until('window.__contextRaw>'+count)
++  await run('window.__contextOff();delete window.__contextOff;delete window.__contextRaw')
++  const originalQuery=product.query;let release,started=false,first=true
++  try{
++    product.query=(type,options)=>{if(type==='history'&&first){first=false;started=true;return new Promise(resolve=>{release=resolve})}return originalQuery(type,options)}
++    await click('[data-testid="tab-history"]')
++    assert.equal(started,true)
++    await run('window.__stalePaint=false;window.__contextObserver=new MutationObserver(()=>{if(document.body.textContent.includes("STALE-CONTEXT-RECORD"))window.__stalePaint=true});window.__contextObserver.observe(document.body,{subtree:true,childList:true,characterData:true})')
++    await product.action('refreshAuth')
++    release({items:[{id:'stale',metricId:'STALE-CONTEXT-RECORD',target:1,completed:1,result:'completed'}],total:1,completedCount:1,pageSize:20})
++    await wait(400);await until('!!document.querySelector("[data-testid=history-empty]")')
++    assert.equal(await run('window.__stalePaint'),false,'Pending old query must never paint after a coalesced context round trip')
++    await run('window.__contextObserver.disconnect();delete window.__contextObserver;delete window.__stalePaint')
++  }finally{product.query=originalQuery}
++  await click('[data-testid="tab-game"]')
++  console.log('Coalesced auth native regression: data tab retained, fresh raw delivery resumed, stale pending history never painted.')
++}
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/tests/guided-smoke.cjs b/tests/guided-smoke.cjs
+index 95ea5b1..edb3934 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/tests/guided-smoke.cjs
++++ b/tests/guided-smoke.cjs
+@@ -71,12 +71,13 @@ module.exports=async({main,product,app,openOverlay,getOverlay})=>{
+   assert.equal(product.snapshot().target,22,'Two distinct matching comments add exactly 2, no duplicate/multiword award')
+   assert.equal(product.snapshot().contributions.comment,2)
+   const data=mockGame(0);data.allPlayers[0].scores.creepScore=30;product.game(data,'live');data.gameData.gameTime++;data.allPlayers[0].scores.creepScore=35;product.game(data,'live')
+   assert.equal(product.snapshot().completed,5)
+   await until('document.querySelector("[data-testid=completed-value]").textContent==="5"')
+   await capture('06-progress-small.png');await checkLayout();main.setSize(1360,920);await wait(200);await capture('07-progress.png')
++  await require('./context-ui-smoke.cjs')({main,product,run,wait,until,click})
+   console.log('Guided smoke: renderer reload starting')
+   await new Promise((resolve,reject)=>{
+     const contents=main.webContents
+     const finished=()=>{clearTimeout(timeout);console.log('Guided smoke: renderer reload completed');resolve()}
+     const timeout=setTimeout(()=>{contents.removeListener('did-finish-load',finished);reject(Error('Renderer reload exceeded 8 seconds: '+JSON.stringify({isLoading:contents.isLoading(),title:contents.getTitle(),url:contents.getURL()})))},8000)
+     contents.once('did-finish-load',finished)
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/tests/main-transport.test.cjs b/tests/main-transport.test.cjs
+index 95c1921..5e9240b 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/tests/main-transport.test.cjs
++++ b/tests/main-transport.test.cjs
+@@ -1,34 +1,48 @@
+ const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path'),{EventEmitter}=require('node:events')
+ async function fixture(){
+- const handlers={},windows=[],app=new EventEmitter(),calls={flush:0,stop:0,dialogs:0,raw:0};let fail=false,state={source:'live',account:{status:'signed-out'}},contextChanged
++ const handlers={},windows=[],app=new EventEmitter(),calls={flush:0,stop:0,dialogs:0,raw:0,contexts:[]};let fail=false,state={source:'live',contextVersion:0,account:{status:'signed-out'}},contextChanged
+  const product={display:()=>state,overlay:()=>({source:'live'}),query:()=>({private:true}),action(){},game(){},collectorStatus(){},async flush(){calls.flush++;return {error:fail?{category:'write'}:null}},async stop(){calls.stop++;return {error:null}}}
+- class Window extends EventEmitter{constructor(){super();this.webContents=new EventEmitter();this.webContents.setWindowOpenHandler=()=>{};this.webContents.send=name=>{if(name==='collector:snapshot')calls.raw++};windows.push(this)}isDestroyed(){return false}async loadFile(){}show(){}focus(){}}
++ class Window extends EventEmitter{constructor(){super();this.webContents=new EventEmitter();this.webContents.setWindowOpenHandler=()=>{};this.webContents.send=(name,value)=>{if(name==='collector:snapshot')calls.raw++;if(name==='product:context')calls.contexts.push(value)};windows.push(this)}isDestroyed(){return false}async loadFile(){}show(){}focus(){}}
+  app.getPath=()=>'.';app.requestSingleInstanceLock=()=>true;app.whenReady=()=>Promise.resolve();app.quit=()=>{const e={preventDefault(){this.prevented=true}};app.emit('before-quit',e);if(!e.prevented)calls.quit=true}
+  let time=1000
+  const context={require:id=>id==='electron'?{app,BrowserWindow:Window,ipcMain:{handle:(n,f)=>handlers[n]=f},globalShortcut:{},session:{},safeStorage:{},dialog:{showErrorBox(){calls.dialogs++}}}:id==='./product.cjs'?{createProduct:options=>{contextChanged=options.onContextChange;return product}}:id==='./collector.cjs'?{fetchGame:async()=>({raw:true}),mockGame:()=>null}:require(id),process:{argv:[],env:{}},console,__dirname:path.resolve('electron'),setTimeout:()=>0,clearTimeout(){},setInterval,clearInterval,performance,Date:class extends Date{static now(){return time+=1000}}}
+  vm.runInNewContext(fs.readFileSync('electron/main.cjs','utf8'),context)
+  await new Promise(resolve=>setImmediate(resolve))
+- return {handlers,windows,app,calls,setFailure:value=>{fail=value},setState:value=>{state=value;contextChanged?.()},poll:context.poll}
++ return {handlers,windows,app,calls,product,setFailure:value=>{fail=value},setState:value=>{state={...value,contextVersion:state.contextVersion+1};contextChanged?.(state.contextVersion);return state.contextVersion},poll:context.poll}
+ }
+ test('raw game subscription requires fresh opt-in after auth loss and source/context change',async()=>{
+  const f=await fixture(),sender=f.windows[0].webContents,authenticated={source:'live',account:{status:'authenticated',profile:{id:'alice'}}}
+- f.setState(authenticated);f.handlers['collector:subscribe']({sender},true);await f.poll();assert.equal(f.calls.raw,1)
++ let version=f.setState(authenticated);f.handlers['collector:subscribe']({sender},true,version);await f.poll();assert.equal(f.calls.raw,1)
+  f.setState({...authenticated,account:{...authenticated.account,status:'checking'}});await f.poll()
+- f.setState(authenticated);await f.poll();assert.equal(f.calls.raw,1)
+- f.handlers['collector:subscribe']({sender},true);await f.poll();assert.equal(f.calls.raw,2)
++ version=f.setState(authenticated);await f.poll();assert.equal(f.calls.raw,1)
++ f.handlers['collector:subscribe']({sender},true,version);await f.poll();assert.equal(f.calls.raw,2)
+  f.setState({source:'test',account:{status:'preview'}});await f.poll();assert.equal(f.calls.raw,2)
+ })
+ test('main-only queries reject foreign/overlay senders and unauthenticated raw game reads expose no data',async()=>{
+  const f=await fixture(),sender=f.windows[0].webContents
+  assert.throws(()=>f.handlers['product:query']({sender:{}},'history'))
+  for(const type of ['challengeLog','diagnostics'])assert.throws(()=>f.handlers['product:query']({sender:{}},type))
+  assert.throws(()=>f.handlers['collector:get']({sender:{}}))
+- assert.equal(f.handlers['product:query']({sender},'history').private,true)
++ assert.equal((await f.handlers['product:query']({sender},'history')).private,true)
+  assert.equal(f.handlers['collector:get']({sender}).data,undefined)
+ })
++
++test('context generations invalidate pending queries and stale raw opt-ins across same-account round trips',async()=>{
++ const f=await fixture(),sender=f.windows[0].webContents,a={source:'live',account:{status:'authenticated',profile:{id:'alice'}}}
++ const before=f.setState(a);let release
++ f.product.query=()=>new Promise(resolve=>{release=resolve})
++ const pending=Promise.resolve(f.handlers['product:query']({sender},'history',{},before))
++ f.setState({...a,account:{...a.account,status:'checking'}});const after=f.setState(a)
++ release({private:true});await assert.rejects(pending,/context/i)
++ assert.deepEqual(f.calls.contexts,[before,before+1,after])
++ assert.equal(f.handlers['collector:subscribe']({sender},true,before),false)
++ await f.poll();assert.equal(f.calls.raw,0)
++ assert.equal(f.handlers['collector:subscribe']({sender},true,after),true)
++ await f.poll();assert.equal(f.calls.raw,1)
++})
+ test('close waits for flush, shows failure without stopping the app, then permits successful retry',async()=>{
+  const f=await fixture();f.setFailure(true)
+  const event={preventDefault(){this.prevented=true}}
+  f.windows[0].emit('close',event);assert.equal(event.prevented,true)
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(f.calls.stop,0);assert.equal(f.calls.dialogs,1);assert.equal(f.calls.quit,undefined)
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/tests/ui-rules.test.cjs b/tests/ui-rules.test.cjs
+index a769d8e..524b089 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-final-review-base/tests/ui-rules.test.cjs
++++ b/tests/ui-rules.test.cjs
+@@ -137,6 +137,24 @@ test('preview feed incremental cursor keeps 500 rows and clear preserves totals'
+ test('virtual feed clamps an old bottom scroll position after narrowing to a small result set',()=>{
+   const {feedWindow}=loadComponent('src/feed-window.js')
+   assert.deepEqual(feedWindow(10,30000,320),{start:1,end:10})
+   assert.deepEqual(feedWindow(0,30000,320),{start:0,end:0})
+   assert.deepEqual(feedWindow(500,0,320),{start:0,end:9})
+ })
++
++test('history heading labels account-wide completion separately from filtered records',()=>{
++  const {HistorySummary}=loadComponent('src/components/ChallengeHistory.jsx')
++  const markup=renderToStaticMarkup(React.createElement(HistorySummary,{completedCount:12,total:1}))
++  assert.match(markup,/账号累计完成 12 次/)
++  assert.match(markup,/当前筛选 1 条/)
++})
++
++test('select keyboard seeks enabled endpoints and handles empty or disabled-only menus',()=>{
++  const {optionIndex}=loadComponent('src/components/Select.jsx')
++  const options=[{disabled:true},{value:'a'},{value:'b'},{disabled:true}]
++  assert.equal(optionIndex(options,1,'End'),2)
++  assert.equal(optionIndex(options,2,'Home'),1)
++  assert.equal(optionIndex(options,2,'ArrowDown'),1)
++  assert.equal(optionIndex(options,1,'ArrowUp'),2)
++  assert.equal(optionIndex([],0,'End'),-1)
++  assert.equal(optionIndex([{disabled:true}],0,'Home'),-1)
++})
+

@@ -1,0 +1,83 @@
+const assert=require('node:assert/strict')
+
+module.exports=async({main,product,run,wait,until,click,input,capture,checkLayout})=>{
+ assert.equal(await run('document.querySelectorAll(".setup-stepper button").length'),2,'Initial onboarding has only platform and login steps')
+ await click('[data-testid=setup-platform-douyin]')
+ await product.action('importAndVerify','sessionid=setup-scroll-fixture')
+ await until('!!document.querySelector("[data-testid=metric-champion-kills]")')
+ assert.equal(product.snapshot().setup.roomConfirmed,false,'Gameplay settings are available before connecting a room')
+ const info=()=>run(`(()=>{const q=s=>document.querySelector(s),e=q('.setup-scroll'),p=q('#panel-game'),r=e.getBoundingClientRect(),step=q('.setup-stepper')?.getBoundingClientRect();return {top:e.scrollTop,height:e.clientHeight,content:e.scrollHeight,panelTop:p.scrollTop,panelHeight:p.clientHeight,panelContent:p.scrollHeight,stepTop:step?.top??null,x:Math.round(r.left+20),y:Math.round(Math.min(r.bottom,innerHeight)-45)}})()`)
+ const wheel=async(point,deltaY)=>{
+  main.focus();main.webContents.sendInputEvent({type:'mouseMove',x:point.x,y:point.y})
+  main.webContents.sendInputEvent({type:'mouseWheel',x:point.x,y:point.y,deltaY,deltaX:0})
+  await wait(150)
+ }
+ async function checkScroll(label){
+ assert.equal(await run('document.querySelectorAll(".setup-stepper button").length'),0,'Gameplay settings stay inside the workspace without onboarding navigation')
+ for(const [width,height] of [[1360,920],[960,700]]){
+  main.setSize(width,height);main.showInactive();await wait(100);await checkLayout()
+  await run('document.querySelector("#panel-game").scrollTop=0;document.querySelector(".setup-scroll").scrollTop=0')
+  // DOM-only navigation does not terminate Chromium's previous wheel gesture.
+  // Click empty padding to start a fresh native gesture on the current scroller.
+  const padding=await run('(()=>{const r=document.querySelector(".setup-scroll").getBoundingClientRect();return {x:Math.round(r.left+2),y:Math.round(r.top+2)}})()')
+  main.focus();main.webContents.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...padding})
+  main.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,...padding})
+  await wait(100)
+  const before=await info();console.log('Gameplay wheel before:',width,height,before)
+  await wheel(before,-450)
+  const down=await info();console.log('Gameplay wheel down:',down)
+  assert.ok(down.top>before.top,'Native mouse wheel over the gameplay content must scroll down')
+  assert.equal(down.panelTop,0,'The outer challenge panel must not become a second scrolling owner')
+  assert.equal(down.stepTop,before.stepTop,'The setup stepper stays visible while its form scrolls')
+  for(let i=0;i<12;i++){const next=await info();if(next.top+next.height>=next.content-2)break;await wheel(next,-450)}
+  await until('(()=>{const e=document.querySelector(".setup-scroll");return e.scrollTop+e.clientHeight>=e.scrollHeight-2})()')
+  assert.equal(await run('(()=>{const b=document.querySelector(".setup-actions button").getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})()'),true,'The save button is reachable by wheel')
+  await capture(`setup-scroll-${label}-bottom-${width}.png`)
+  // Chromium bounds a single wheel gesture; use repeated real gestures, not a
+  // synthetic scrollTop assignment, to reach the other end of a long form.
+  for(let i=0;i<12;i++){const next=await info();if(next.top===0)break;await wheel(next,450)}
+  await until('document.querySelector(".setup-scroll").scrollTop===0')
+  await capture(`setup-scroll-${label}-top-${width}.png`)
+ }
+ }
+ await checkScroll('first-gameplay')
+ await product.action('configureChallenge',{metricId:'champion-kills',target:10,rules:{likesEnabled:true,likeEvery:100,followEnabled:true,follow:1,gifts:[]}})
+ await product.action('start');await product.action('completed',3)
+ const previous=product.snapshot()
+ await until('!!document.querySelector("[data-testid=change-gameplay]")')
+ await click('[data-testid=change-gameplay]');await until('!!document.querySelector("[data-testid=metric-turret-kills]")')
+ const switched=product.snapshot()
+ assert.equal(switched.account.status,'authenticated');assert.equal(switched.account.profile.id,previous.account.profile.id)
+ assert.equal(switched.room,previous.room);assert.equal(switched.setup.roomConfirmed,false)
+ assert.equal(switched.status,'paused');assert.equal(switched.completed,3);assert.equal(switched.target,10)
+ assert.deepEqual(switched.rules,previous.rules)
+ assert.equal(await run('!!document.querySelector("[data-testid=tab-messages]")'),true,'Gameplay switching stays inside the workspace')
+ await click('[data-testid=metric-turret-kills]')
+ await until('document.querySelector("[data-testid=metric-turret-kills]").getAttribute("aria-pressed")==="true" && !!document.querySelector("[data-testid=setup-start]")')
+ await checkScroll('workspace')
+ main.setMinimumSize(600,440);main.setSize(640,520);await wait(100)
+ await wheel({x:80,y:300},-450)
+ await until('document.scrollingElement.scrollTop>0')
+ assert.equal(await run('document.querySelector(".setup-scroll").scrollTop'),0,'Small preview uses document scrolling, not a nested scroll trap')
+ assert.equal(await run('document.documentElement.scrollWidth<=innerWidth+1'),true)
+ main.setSize(960,700);await wait(100)
+ await input('[data-testid=setup-target]','25');await input('[data-testid=rules-follow-reward]','3')
+ await product.action('refreshGifts')
+ assert.equal(await run('document.querySelector("[data-testid=setup-target]").value'),'25','Catalog updates must not reset the gameplay form')
+ await click('[data-testid=setup-start]')
+ await until('!!document.querySelector("[data-testid=completed-value]")')
+ assert.equal(product.snapshot().metricId,'turret-kills');assert.equal(product.snapshot().target,25)
+ assert.equal(product.snapshot().rules.follow,3);assert.equal(product.snapshot().status,'running')
+ await click('[data-testid=change-gameplay]')
+ await until('!!document.querySelector("[data-testid=metric-champion-kills]")')
+ assert.equal(await run('!!document.querySelector(".setup-stepper")'),false,'Subsequent switches also stay in gameplay-only settings')
+ await click('[data-testid=metric-champion-kills]');await click('[data-testid=resume-challenge]')
+ await until('document.querySelector("[data-testid=completed-value]")?.textContent==="3"')
+ assert.equal(product.snapshot().status,'paused');assert.equal(product.snapshot().target,10)
+ assert.deepEqual(product.snapshot().rules,previous.rules)
+ await product.action('logout')
+ await until('!!document.querySelector("[data-testid=setup-login]")')
+ assert.equal(await run('document.querySelectorAll(".setup-stepper button").length'),2,'Logging out restores the two-step login guide')
+ assert.equal(await run('!!document.querySelector("[data-testid=tab-messages]")'),false,'Logging out cannot keep access to the workspace')
+ console.log('Gameplay navigation and native wheel passed: two-step onboarding, gameplay before room connection, preserved account/draft, restored progress, login gating, and one scroll owner at default/minimum sizes.')
+}

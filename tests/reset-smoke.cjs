@@ -1,0 +1,50 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path')
+const {BrowserWindow,session}=require('electron')
+module.exports=async({main,product,getProduct,app,run,until,click,input,capture,checkLayout})=>{
+ const directory=app.getPath('userData');assert.match(path.basename(directory),/^lit-test-\d+$/)
+ const current=getProduct||(()=>product),marker=path.join(directory,'reset-intent.json')
+ const rules={likesEnabled:true,likeEvery:100,followEnabled:true,follow:1,gifts:[]}
+ await click('[data-testid=setup-platform-douyin]');await product.action('importAndVerify','sessionid=reset-isolated-fixture')
+ await until('!!document.querySelector("[data-testid=tab-messages]")');await product.action('connect','123456')
+ await product.action('configureChallenge',{metricId:'champion-kills',target:0,rules});await product.action('finish')
+ await product.action('configureChallenge',{metricId:'champion-kills',target:50,rules});await product.action('completed',3)
+ await until('!!document.querySelector("[data-testid=challenge-display-open]")')
+ await product.action('overlay');await product.action('messageOverlay')
+ const display=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('#messages-overlay'))
+ await display.webContents.executeJavaScript('window.liveTool.displayControl("messages","settings-open",undefined,'+product.display().contextVersion+')')
+ await click('[aria-label="打开设置"]');await run('[...document.querySelectorAll(".settings-tabs button")].find(e=>e.textContent==="本地存储").click()')
+ await until('!!document.querySelector("[data-testid=storage-reset-open]")')
+ await click('[data-testid=storage-reset-open]');await until('!!document.querySelector("[data-testid=storage-reset-confirm]")')
+ assert.equal(await run('document.querySelector("[data-testid=storage-reset-confirm]").disabled'),true)
+ await input('[data-testid=storage-reset-input]','删除');assert.equal(await run('document.querySelector("[data-testid=storage-reset-confirm]").disabled'),true)
+ await click('[data-testid=storage-reset-cancel]');assert.equal(fs.existsSync(marker),false);assert.equal(current().snapshot().target,50)
+ const denied=await run('window.liveTool.action("factoryReset",{confirmation:"删除"}).then(()=>false,()=>true)');assert.equal(denied,true)
+ const stale=await run('window.liveTool.action("factoryReset",{confirmation:"重置",contextVersion:-1}).then(()=>false,()=>true)');assert.equal(stale,true);assert.equal(fs.existsSync(marker),false)
+ await click('[data-testid=storage-reset-open]');await input('[data-testid=storage-reset-input]','重置')
+ for(const [width,height] of [[1360,920],[960,700]]){main.setSize(width,height);await run('document.querySelector("[data-testid=storage-reset-confirm]").scrollIntoView({block:"nearest"})');await checkLayout();await capture(`reset-confirm-${width}.png`)}
+ for(const relative of ['local-store/checkpoint.json','local-store/history/example.json','local-store/journal.ndjson.recovery','accounts/douyin.credentials','challenge-v1.json','challenge-v1.json.bak']){const file=path.join(directory,relative);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'isolated reset fixture')}
+ const sentinel=path.join(directory,'unrelated-keep.txt');fs.writeFileSync(sentinel,'keep')
+ const ses=session.fromPartition('live-interaction-ui'),clear=ses.clearCache
+ try{
+  ses.clearCache=async()=>{throw Error('synthetic cache cleanup failure')}
+  await click('[data-testid=storage-reset-confirm]');await until('!!document.querySelector("[data-testid=reset-retry]")')
+  assert.equal(fs.existsSync(marker),true);assert.equal(await run('!!document.querySelector(".navigation-row,.header-actions,.modal")'),false)
+  assert.equal(await run('window.liveTool.action("source","test").then(()=>false,()=>true)'),true)
+  assert.match(await run('window.liveTool.getGame().then(()=>"unexpected",e=>e.message)'),/重置/)
+  await capture('reset-retry.png')
+ }finally{ses.clearCache=clear}
+ await click('[data-testid=reset-retry]');await until('!!document.querySelector("[data-testid=setup-platform-douyin]")')
+ assert.notEqual(current(),product);assert.equal(current().display().setup.stage,'platform');assert.equal(current().display().source,'live')
+ assert.equal(current().display().account.status,'signed-out');assert.equal(current().display().configured,false)
+ assert.equal(fs.existsSync(marker),false)
+ for(const name of ['local-store','accounts','challenge-v1.json','challenge-v1.json.bak'])assert.equal(fs.existsSync(path.join(directory,name)),false,name)
+ assert.equal(fs.readFileSync(sentinel,'utf8'),'keep')
+ assert.equal(BrowserWindow.getAllWindows().filter(w=>w!==main).length,0,'Reset closes login, display and configuration windows')
+ await capture('reset-first-use.png');await checkLayout()
+ const reloaded=new Promise(resolve=>main.webContents.once('did-finish-load',resolve));main.webContents.reload();await reloaded;await until('!!document.querySelector("[data-testid=setup-platform-douyin]")')
+ await click('[data-testid=setup-platform-douyin]');await until('!!document.querySelector("[data-testid=setup-login]")')
+ await current().action('importAndVerify','sessionid=reset-isolated-fixture');await until('!!document.querySelector("[data-testid=metric-champion-kills]")')
+ assert.equal((await current().query('history')).total,0);assert.equal(current().snapshot().challengeSlots.length,0)
+ assert.equal(await run('!!document.querySelector("[data-testid=metric-champion-kills]")'),true)
+ console.log('Reset native checks passed: typed confirmation/cancel/stale request, cleanup failure lock and retry, all display closure, clean onboarding and no old history/drafts after re-login; 1360x920 and 960x700.')
+}

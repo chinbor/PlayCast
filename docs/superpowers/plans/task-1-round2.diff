@@ -1,0 +1,54 @@
+--- a/electron/challenge.cjs
++++ b/electron/challenge.cjs
+@@ -97,9 +97,4 @@
+       if (state.status === 'ended') throw new Error('请先创建新挑战')
+       if (state.status !== 'running') {
+-        if (state.status === 'paused' && state.pending) {
+-          state.adjustment += state.pending
+-          state.pending = 0
+-          log(state, 'manual', '恢复前未追平的临时补进度转为手动调整')
+-        }
+         state.status = 'running'; state.needsBaseline = true; log(state, 'session', '挑战开始或恢复；下次有效游戏数据建立基线')
+       }
+@@ -146,1 +141,20 @@
+-    if (!before || state.needsBaseline) { state.game = current; state.needsBaseline = false; log(state, 'game', '游戏指标基线已建立'); return true }
++    if (!before || state.needsBaseline) {
++      if (state.pending) {
++        const sameGame = before && current.identity === before.identity && current.team === before.team &&
++          current.time >= before.time - 5 && current.value >= before.value
++        if (sameGame) {
++          const reconciled = Math.min(state.pending, current.value - before.value)
++          state.pending -= reconciled
++          state.auto += reconciled
++          if (reconciled) log(state, 'game', `恢复基线追平 ${reconciled} 项临时补进度`)
++        } else {
++          state.adjustment += state.pending
++          state.pending = 0
++          log(state, 'manual', '旧对局的临时补进度转为手动调整')
++        }
++      }
++      state.game = current
++      state.needsBaseline = false
++      log(state, 'game', '游戏指标基线已建立')
++      return true
++    }
+--- a/tests/challenge-v2.test.cjs
++++ b/tests/challenge-v2.test.cjs
+@@ -104,1 +104,1 @@
+-test('resume settles pending before rebasing when no paused snapshot arrives', () => {
++test('resume baseline reconciles pending catch-up already visible after the pause', () => {
+@@ -117,0 +117,14 @@
++test('resume baseline at old value leaves pending for delayed API catch-up', () => {
++  const challenge = configured()
++  challenge.action('start')
++  challenge.game(game(0, 30, 100), 1000)
++  challenge.action('pending', undefined, 1100)
++  challenge.action('pause')
++  challenge.action('start')
++  challenge.game(game(0, 30, 101), 1400)
++  assert.equal(challenge.snapshot().pending, 1)
++  challenge.game(game(1, 31, 102), 1600)
++  assert.equal(challenge.snapshot().completed, 1)
++  assert.equal(challenge.snapshot().pending, 0)
++})
++

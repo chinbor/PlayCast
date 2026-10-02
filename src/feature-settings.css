@@ -1,0 +1,35 @@
+.challenge-tabs.settings-tabs,.message-tabs.settings-tabs{flex:none;padding:0 0 10px;margin-bottom:8px;justify-content:flex-start;border:0;gap:8px}
+.history-summary{margin-bottom:14px;color:var(--muted);font-size:12px}.history-summary p{margin:0}
+.feed-subbar>.feed-actions{flex-shrink:0;flex-wrap:wrap;row-gap:6px}
+.message-subpage{flex:1;min-height:0}.message-live-page{display:flex;flex-direction:column;overflow:hidden}.message-info-page{overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;padding:20px 24px;background:#fff;border:1px solid var(--line);border-radius:16px;overflow-wrap:anywhere}
+.diagnostic-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}.diagnostic-cards>div{padding:14px 16px;border-radius:12px;background:#f7f5fa;min-width:0}.diagnostic-cards span{font-size:12px;color:var(--muted)}.diagnostic-cards strong{display:block;font-size:24px;margin-top:5px;overflow-wrap:anywhere}.diagnostic-samples h4{margin-top:26px}.extension-analysis{padding:14px;background:#f7f5fa;border-radius:12px;margin:16px 0}.extension-analysis>summary{cursor:pointer;font-weight:600}.extension-analysis[open]>summary{margin-bottom:12px}
+.debug-setting{display:flex;align-items:center;gap:24px;justify-content:space-between;margin:24px 0}.debug-setting p{max-width:550px;margin-bottom:0}.debug-toggle{flex:none;width:46px;height:26px;min-width:46px;padding:3px;border:0;border-radius:20px;background:#c5bfca;display:flex;align-items:center;justify-content:flex-start;box-shadow:none}.debug-toggle>span{width:20px;height:20px;flex:none;background:white;border-radius:50%;box-shadow:0 1px 3px #0002}.debug-toggle.enabled{background:#8b70ba;justify-content:flex-end}.debug-toggle:hover{transform:none}.general-settings{max-width:740px}
+.setup-intro{max-width:none;margin:0;padding-top:0}
+.setup-intro>.login-panel,.setup-intro>.room-panel,.setup-intro>.cookie-import{width:100%;max-width:700px;box-sizing:border-box;margin-left:0;margin-right:0}
+.setup-intro>.cookie-import{margin-top:16px;margin-bottom:24px}
+.cookie-import>div{display:flex;flex-direction:column;align-items:stretch;gap:12px}
+.cookie-import>div>p,.cookie-import .form-label{margin:0}
+.cookie-import [data-testid=manual-import]{align-self:flex-start}
+.setup-panel-host .setup-scroll{padding-top:24px}
+.setup-panel-host .setup-stepper{padding-block:12px;align-items:center}
+@media(max-width:1000px){.message-info-page{padding:16px}.diagnostic-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.feature-display-control,.feature-page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.feature-display-control:has(.display-unavailable-hint){flex-direction:column;align-items:flex-end;flex-wrap:nowrap}.display-unavailable-hint{color:var(--muted);font-size:11px;white-space:nowrap}
+.feature-window-status{font-size:12px;color:var(--muted);max-width:180px;overflow-wrap:anywhere}
+.feature-window-more,.feed-display-options{position:relative;font-size:12px}
+.feature-window-more summary,.feed-display-options summary{cursor:pointer;padding:8px;white-space:nowrap}
+.feature-window-more>div,.feature-window-more>button,.feed-display-options>.check-label{position:absolute;top:100%;right:0;z-index:8;background:#fffefa;border:1px solid var(--line);border-radius:10px;padding:10px;box-shadow:0 8px 24px #55433318;min-width:140px}
+.feature-window-more>div{display:grid;gap:8px}.feature-window-more>div button{width:100%}
+.feature-page-actions{max-width:410px}.header-status button{border:0;background:transparent;padding:4px 0;color:inherit;font:inherit;max-width:180px;white-space:normal}
+.game-connection-entry,.setup-display-entry{display:flex;justify-content:flex-end;margin:12px 0}
+.feature-settings fieldset,.display-popup-settings fieldset{border:0;padding:0;margin:0;min-width:0}
+.feature-settings .advanced-options{margin:18px 0}.advanced-options summary{cursor:pointer;padding:10px 0;font-weight:600}
+.draft-conflict,.draft-leave{overflow-wrap:anywhere;margin:14px 0}.draft-leave .button-row,.draft-conflict .button-row{flex-wrap:wrap}
+.display-popup-settings .display-theme-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.display-popup-settings[hidden]{display:none}
+.display-popup-settings .display-theme-swatch{height:32px}.display-popup-settings .display-theme-option small{display:none}
+.display-popup-settings .form-label{font-size:12px;margin-top:12px;color:inherit}.display-popup-settings input:not([type=checkbox]):not([type=range]){max-width:100%;min-width:0;box-sizing:border-box}
+.display-popup-settings .draft-leave,.display-popup-settings .draft-conflict{background:var(--display-panel);color:var(--display-fg);padding:10px;border:1px solid var(--display-line)}
+.display-popup-settings .button-row{display:flex;gap:6px;flex-wrap:wrap}.display-popup-settings .popup-settings-actions{position:sticky;bottom:-16px;background:var(--display-panel);padding:12px 0;margin-top:12px}
+@media(max-width:1100px){.feature-page-actions{max-width:320px}.page-intro{align-items:flex-start;flex-wrap:wrap}.feature-window-status{max-width:150px}}
+@media(max-width:760px){.feature-settings .display-settings-columns{grid-template-columns:minmax(0,1fr)}.feature-display-control{justify-content:flex-start}.feature-page-actions{justify-content:flex-start;max-width:100%}.main-tabs button{min-width:0;padding:10px 14px}}

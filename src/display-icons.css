@@ -1,0 +1,15 @@
+/* Shared semantic colors for the two dark capture surfaces. Only icon glyphs
+   inherit these colors; numbers, text and real platform gift images do not. */
+:is(.message-display,.broadcast-screen){--interaction-online:#ead394;--interaction-comment:#9de0c2;--interaction-like:#f2a4be;--interaction-enter:#9dcbf0;--interaction-follow:#f2be8c;--interaction-gift:#c6aef3}
+:is(.message-display,.broadcast-screen) [data-interaction=online]{color:var(--interaction-online)}
+:is(.message-display,.broadcast-screen) [data-interaction=comment]{color:var(--interaction-comment)}
+:is(.message-display,.broadcast-screen) [data-interaction=like]{color:var(--interaction-like)}
+:is(.message-display,.broadcast-screen) [data-interaction=enter]{color:var(--interaction-enter)}
+:is(.message-display,.broadcast-screen) [data-interaction=follow]{color:var(--interaction-follow)}
+:is(.message-display,.broadcast-screen) [data-interaction=gift]{color:var(--interaction-gift)}
+.message-categories svg,.message-row-icon svg,.broadcast-rule-icon svg,.display-toolbar svg{display:block;flex-shrink:0}
+.broadcast-rule-icon{width:24px;height:24px;flex-basis:24px}
+.broadcast-reason .broadcast-rule-icon{width:16px;height:16px;flex-basis:16px}
+.app-logo{background:transparent;transform:none;border-radius:0;flex-shrink:0}
+.app-logo img{display:block;width:100%;height:100%;object-fit:contain}
+.rule-list .rule-gift-image{display:block;width:30px;height:30px;object-fit:contain;flex-shrink:0}

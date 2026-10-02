@@ -1,0 +1,89 @@
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-query-before/product.cjs b/electron/product.cjs
+index 7aaff40..a0d6863 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-query-before/product.cjs
++++ b/electron/product.cjs
+@@ -65,13 +65,13 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+     if(live.state.status==='ended')library.settle(live,live.snapshot().completed>=live.state.target?'completed':'ended-early',live.state.endedAt??null)
+     else library.put(live)
+   }
+   let unboundLegacy=live.state.migrationNotice&&!live.state.configured?live:null
+   if(live.state.binding)live=createChallenge()
+   let test=createChallenge(),selected=saved?.setup?.platformId||null,confirmed=saved?.setup?.confirmed||null,room=saved?.room||'',presets=saved?.presets||{},gameplayChoice=false
+-  let feeds={live:createFeed(),test:createFeed()},lastAccount=null,connectionScope=null
++  let feeds={live:createFeed(),test:createFeed()},lastAccount=null,connectionScope=null,diagnosticScope=null
+   const current=()=>source==='live'?live:test,feed=()=>feeds[source]
+   const platform=()=>platforms.get(selected||platforms.list()[0].id)
+   const account=()=>platform().getAccount()
+   const scope=()=>selected&&account().profile?.id&&room?{platformId:selected,accountScope:account().profile.id,roomId:room}:null
+   const demoScope=()=>({platformId:selected||'douyin',accountScope:'demo',roomId:'demo'})
+   function defaultDemo(){
+@@ -98,32 +98,51 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+   }
+   function setup(){
+     const a=account(),binding=scope(),roomConfirmed=sameScope(confirmed,binding)
+     const stage=!selected?'platform':a.status!=='authenticated'?'login':!roomConfirmed?'room':gameplayChoice||!live.state.configured||live.state.status==='ended'||!sameScope(live.state.binding,binding)?'gameplay':'workspace'
+     return {platformId:selected,stage,roomConfirmed,complete:stage==='workspace',requiresNewChallenge:activeChallenge()&&!sameScope(live.state.binding,binding)}
+   }
++  function visibleLogState(){
++    const state=current().state
++    return source==='test'?state:account().status==='authenticated'&&sameScope(confirmed,scope())&&sameScope(state.binding,scope())?state:null
++  }
++  const logsVersion=state=>state?`${state.id}:${state.logs[0]?.id||state.logs[0]?.at||''}:${state.logs.length}`:null
+   function snapshot(full=true){
+     const adapter=platform(),isLive=source==='live',authenticated=!isLive||account().status==='authenticated'
+     const s=(isLive&&!authenticated?hiddenChallenge:current()).snapshot(!full),binding=scope()
+     s.interactionWarning=authenticated?interactionWarning:null
+     const visibleScope=isLive&&account().status==='authenticated'&&sameScope(confirmed,binding)?binding:null
+     const visibleAccount=isLive&&account().status==='authenticated'&&selected&&account().profile?.id?{platformId:selected,accountScope:account().profile.id}:null
+     return {...s,collector,source,scope:isLive?visibleScope:demoScope(),historyVersion:(isLive?library:demoLibrary).version,giftVersion:catalog.version,feedVersion:(authenticated?feed():hiddenFeed).version,storage:store?.status()||{pending:false,error:null},room:authenticated?room:'',persistenceError:error||store?.status().error?.message||'',challengeSlots:isLive?library.slots(visibleScope):demoLibrary.slots(demoScope()),
+       ...(full?{history:isLive?library.historyFor(visibleAccount):demoLibrary.historyFor(demoScope())}:{}),
+       douyin:adapter.getState?.()||{status:'idle'},platform:adapter.descriptor,platforms:platforms.list(),account:isLive?account():{status:'preview',profile:null,configured:false,message:'演练模式不读取真实账号'},
+       setup:isLive?setup():{stage:gameplayChoice?'gameplay':'workspace',complete:!gameplayChoice,platformId:selected},
+       metrics:METRICS.map(m=>({...m,...readMetric(authenticated?lastGame:null,m.id)})),rulePresets:structuredClone(isLive&&authenticated&&binding&&sameScope(confirmed,binding)?presets[scopeKey(binding)]||{}:{}),
+-      ...(full?{giftCatalog:!adapter.descriptor.capabilities.giftCatalog?{items:[],status:'unsupported',message:'此平台不支持礼物目录'}:{...catalog.snapshot(isLive?visibleScope:null),loading:giftLoading},feed:(authenticated?feed():hiddenFeed).snapshot()}:{}),shortcuts,giftLoading,storage:{...(store?.status()||{error:null}),pending:persistencePending||!!store?.status().pending}}
++      ...(full?{giftCatalog:!adapter.descriptor.capabilities.giftCatalog?{items:[],status:'unsupported',message:'此平台不支持礼物目录'}:{...catalog.snapshot(isLive?visibleScope:null),loading:giftLoading},feed:(authenticated?feed():hiddenFeed).snapshot()}:{}),shortcuts,giftLoading,logsVersion:logsVersion(visibleLogState()),storage:{...(store?.status()||{error:null}),pending:persistencePending||!!store?.status().pending}}
+   }
+   const display=()=>snapshot(false)
+   function overlay(){const s=display();return Object.fromEntries(['id','source','scope','status','configured','target','completed','remaining','metric','metricStatus','metricMessage','binding','account','setup','douyin','platform','interactionWarning','persistenceError'].map(k=>[k,s[k]]))}
+   async function query(type,options={}){
+     options=object(options)?options:{}
+     const authenticated=source==='test'||account().status==='authenticated'
+     const owner=source==='test'?demoScope():authenticated&&selected&&account().profile?.id?{platformId:selected,accountScope:account().profile.id}:null
+     const collection=source==='test'?demoLibrary:library
++    if(type==='challengeLog'){const state=visibleLogState();return {items:state?structuredClone(state.logs.slice(0,300)):[],challengeId:state?.id||null,scope:state?structuredClone(state.binding):null,version:logsVersion(state),limit:300}}
++    if(type==='diagnostics'){
++      const visible=source==='live'&&authenticated&&sameScope(confirmed,scope())&&sameScope(diagnosticScope,scope())
++      const entries=visible?platform().diagnostics?.():[]
++      const items=(Array.isArray(entries)?entries:[]).slice(-50).map(entry=>{
++        const e=object(entry)?entry:{}
++        return {method:typeof e.method==='string'&&/^Webcast[A-Za-z0-9]{1,64}Message$/.test(e.method)?e.method:'unknown',
++          stage:['decode','frame','processing'].includes(e.stage)?e.stage:'unknown',
++          code:['ERR_INVALID_ARG_TYPE','Z_DATA_ERROR','Z_BUF_ERROR','UNKNOWN'].includes(e.code)?e.code:'UNKNOWN',
++          timestamp:Number.isSafeInteger(e.timestamp)&&e.timestamp>=0?e.timestamp:0,
++          payloadSize:Number.isSafeInteger(e.payloadSize)&&e.payloadSize>=0&&e.payloadSize<=8*1024*1024?e.payloadSize:0}
++      })
++      return {items,scope:visible?{...diagnosticScope}:null,limit:50}
++    }
+     if(type==='history')return {...collection.query(owner,options),version:collection.version}
+     if(type==='historyDetail'){const identity=JSON.stringify(owner),origin=source;const value=await collection.detail(owner,options.id);const now=source==='test'?demoScope():account().status==='authenticated'&&selected&&account().profile?.id?{platformId:selected,accountScope:account().profile.id}:null;return origin===source&&identity===JSON.stringify(now)?value:null}
+     if(type==='feed')return (authenticated?feed():hiddenFeed).query(options)
+     if(type==='gifts'){if(!platform().descriptor.capabilities.giftCatalog)return {items:[],status:'unsupported',scope:null,loading:false,version:catalog.version};const b=source==='live'&&authenticated&&sameScope(confirmed,scope())?scope():null;const c=catalog.snapshot(b);return {items:c.items,status:c.status,message:c.message,scope:c.scope,loading:giftLoading,version:catalog.version}}
+     if(type==='storage')return store?store.usage():{categories:{hot:0,history:0,cache:0,recovery:0},total:0,pending:false,error:null}
+     throw Error('Unsupported query')
+@@ -194,12 +213,13 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+   function requireBinding(){requireLogin();if(!sameScope(live.state.binding,scope())||!sameScope(confirmed,scope()))throw Error('当前账号或房间与挑战不一致，请重新选择挑战')}
+   function validateCapabilities(rules){const types=platform().descriptor.capabilities.messages||[];if((rules.likesEnabled&&!types.includes('like'))||(rules.followEnabled&&!types.includes('follow'))||(rules.commentsEnabled&&!types.includes('comment'))||(rules.gifts?.length&&!types.includes('gift')))throw Error('当前平台不支持所选互动规则')}
+   function validateGiftPlatforms(rules){if(rules?.gifts?.some(gift=>gift.platformId!==selected))throw Error('礼物规则必须属于当前平台')}
+   function disconnect(){connectionScope=null;interactionWarning=null;platform().disconnect();cancelGifts()}
+   function confirmRoom(input,connect=true){
+     requireLogin();const next=platform().parseRoom(input),nextScope={platformId:selected,accountScope:account().profile.id,roomId:next}
++    if(!sameScope(diagnosticScope,nextScope)){platform().clearDiagnostics?.();diagnosticScope=typeof platform().clearDiagnostics==='function'?{...nextScope}:null}
+     if(!sameScope(confirmed,nextScope)){park(live,library);disconnect();feeds.live=createFeed()}
+     room=next;confirmed=nextScope
+     if(!sameScope(live.state.binding,nextScope))selectScopeDraft(nextScope)
+     if(connect){connectionScope={...nextScope};platform().connect(room)}
+   }
+   async function refreshGifts(){
+
+
+

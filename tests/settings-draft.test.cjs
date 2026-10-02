@@ -1,0 +1,34 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),{pathToFileURL}=require('node:url')
+const file=path.resolve(__dirname,'../src/settings-draft.js')
+async function draft(){return fs.existsSync(file)?import(pathToFileURL(file)): {}}
+test('incoming saved settings never silently overwrite local edits; cancel takes latest persisted settings',async()=>{
+ const d=await draft();assert.equal(typeof d.beginDraft,'function')
+ const edited=d.editDraft(d.beginDraft({theme:'dark'}),{theme:'light'})
+ const conflict=d.receiveDraft(edited,{theme:'dark',backgroundTransparency:70})
+ assert.equal(conflict.dirty,true);assert.equal(conflict.conflict,true);assert.equal(conflict.value.theme,'light')
+ assert.deepEqual(d.cancelDraft(conflict).value,{theme:'dark',backgroundTransparency:70});assert.equal(d.cancelDraft(conflict).dirty,false)
+ assert.deepEqual(d.receiveDraft(d.beginDraft({theme:'dark'}),{theme:'light'}).value,{theme:'light'})
+})
+test('draft recognizes identical publication and only explicit save resolves dirty/conflict state',async()=>{
+ const d=await draft();assert.equal(typeof d.beginDraft,'function')
+ const state=d.editDraft(d.beginDraft({theme:'dark',enabledTypes:['gift']}),{theme:'light'})
+ assert.equal(d.receiveDraft(state,{enabledTypes:['gift'],theme:'dark'}).conflict,false)
+ const saved=d.saveDraft(state,{theme:'light',enabledTypes:['gift']});assert.equal(saved.dirty,false);assert.equal(saved.conflict,false)
+ assert.equal(d.editDraft(state,{theme:'dark'}).dirty,false)
+})
+test('publishing the submitted room during a failed connection keeps the room ready for retry',async()=>{
+ const d=await draft()
+ const edited=d.editDraft(d.beginDraft({room:''}),{room:'123456'})
+ const received=d.receiveDraft(edited,{room:'123456'})
+ assert.deepEqual(received.value,{room:'123456'})
+ assert.equal(received.conflict,false)
+ assert.equal(received.dirty,false)
+ const other=d.receiveDraft(edited,{room:'different'})
+ assert.equal(other.conflict,true)
+ assert.equal(other.value.room,'123456')
+})
+test('replacing a leave prompt explicitly cancels its pending native operation',async()=>{
+ const d=await draft();assert.equal(typeof d.replaceLeaveRequest,'function');let canceled=0,continued=0
+ const previous={cancel:()=>canceled++},next=d.replaceLeaveRequest(previous,()=>continued++,()=>{})
+ assert.equal(canceled,1);assert.equal(continued,0);next.proceed();assert.equal(continued,1)
+})

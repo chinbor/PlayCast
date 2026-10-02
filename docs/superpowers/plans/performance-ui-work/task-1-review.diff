@@ -1,0 +1,334 @@
+diff --git a/electron/douyin-diagnostics.cjs b/electron/douyin-diagnostics.cjs
+new file mode 100644
+index 0000000..42d2df0
+--- /dev/null
++++ b/electron/douyin-diagnostics.cjs
+@@ -0,0 +1,20 @@
++const STAGES=new Set(['decode','frame','processing'])
++const CODES=new Set(['ERR_INVALID_ARG_TYPE','Z_DATA_ERROR','Z_BUF_ERROR','UNKNOWN'])
++function createDiagnostics(){
++  const entries=[]
++  return {
++    record({method,stage,error,payloadSize}={}){
++      entries.push({
++        method:typeof method==='string' && /^Webcast[A-Za-z0-9]{1,64}Message$/.test(method)?method:'unknown',
++        stage:STAGES.has(stage)?stage:'unknown',
++        code:CODES.has(error?.code)?error.code:'UNKNOWN',
++        timestamp:Date.now(),
++        payloadSize:Number.isSafeInteger(payloadSize)&&payloadSize>=0&&payloadSize<=8*1024*1024?payloadSize:0
++      })
++      if(entries.length>50)entries.shift()
++    },
++    snapshot:()=>entries.map(entry=>({...entry})),
++    clear:()=>{entries.length=0}
++  }
++}
++module.exports={createDiagnostics}
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-ui-before-20260929/electron/douyin-wire.cjs b/electron/douyin-wire.cjs
+index df8b342..95f6427 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-ui-before-20260929/electron/douyin-wire.cjs
++++ b/electron/douyin-wire.cjs
+@@ -17,46 +17,51 @@ function fields(input) {
+ }
+ const val = (m,k) => m.get(k)?.[0]
+ const str = (m,k) => { const v = val(m,k); return v == null ? '' : v.toString() }
+ const num = (m,k) => Number(str(m,k) || 0)
+ const nested = (m,k) => fields(val(m,k) || Buffer.alloc(0))
+ function varint(value) { let n = BigInt(value); const a = []; if (n < 0n) throw new Error('Negative varint'); do { let c = Number(n & 127n); n >>= 7n; if(n) c |= 128; a.push(c) } while(n); return Buffer.from(a) }
+ function encode(entries) { return Buffer.concat(entries.map(([key,value]) => typeof value === 'bigint' || typeof value === 'number' ? Buffer.concat([varint(key*8),varint(value)]) : (() => { const b = Buffer.from(value); return Buffer.concat([varint(key*8+2),varint(b.length),b]) })())) }
+ const frame = (type,payload = Buffer.alloc(0),logId = '0') => encode([[2,BigInt(logId)],[7,type],[8,payload]])
++const SUPPORTED_METHODS=new Set(['WebcastMemberMessage','WebcastChatMessage','WebcastLikeMessage','WebcastSocialMessage','WebcastGiftMessage','WebcastRoomUserSeqMessage','WebcastControlMessage'])
++const isSupportedMethod=method=>SUPPORTED_METHODS.has(method)
+ function response(bytes) {
+   const r = fields(bytes)
+   return { messages:(r.get(1)||[]).map(b => {const m=fields(b);return {method:str(m,1),payload:val(m,2),id:str(m,3)}}),cursor:str(r,2),internalExt:str(r,5),needAck:num(r,9)!==0,pushServer:str(r,10) }
+ }
+ function decodeFrame(bytes) {
+   const f=fields(bytes); let payload=val(f,8)||Buffer.alloc(0)
+   const type=str(f,7)
+   const headers=(f.get(5)||[]).map(b => fields(b))
+   if (str(f,6)==='gzip' || headers.some(h => str(h,1)==='compress_type' && str(h,2)==='gzip') || (payload[0]===31 && payload[1]===139)) payload=zlib.gunzipSync(payload,{maxOutputLength:8*1024*1024})
+   return { type,logId:str(f,2),response:type==='msg' ? response(payload) : null }
+ }
+ function event(message, roomId) {
+-  const m=fields(message.payload || Buffer.alloc(0)), common=nested(m,1)
++  const method=message.method
++  if (!isSupportedMethod(method)) return null
++  const m=fields(message.payload || Buffer.alloc(0))
++  if (method==='WebcastRoomUserSeqMessage') return {type:'room',online:num(m,3),viewers:num(m,7)}
++  if (method==='WebcastControlMessage') return {type:'control',status:num(m,2)}
++  const common=nested(m,1)
+   const userIndex=message.method==='WebcastLikeMessage'?5:message.method==='WebcastGiftMessage'?7:2
+   const u=nested(m,userIndex)
+   const base={id:`${roomId}:${message.id || str(common,2)}`,userId:str(u,46)||str(u,1028)||str(u,1),userName:str(u,3),createdAt:num(common,4)*1000}
+   if (!(message.id || str(common,2))) return null
+   switch(message.method) {
+     case 'WebcastMemberMessage': return {...base,type:'enter',online:num(m,3)}
+     case 'WebcastChatMessage': return {...base,type:'comment',text:str(m,3)}
+     case 'WebcastLikeMessage': return {...base,type:'like',count:num(m,2)}
+     case 'WebcastSocialMessage': return num(m,4)===1?{...base,type:'follow'}:null
+     case 'WebcastGiftMessage': {
+       const g=nested(m,15),groupId=str(m,11)
+       return {...base,type:'gift',giftName:str(g,16),giftId:str(g,5)||str(m,2),icon:str(nested(g,1),1),count:num(m,5)||num(m,4)||num(m,6)||0,combo:num(g,11)===1,groupId,repeatEnd:num(m,9),price:num(g,12)}
+     }
+-    case 'WebcastRoomUserSeqMessage': return {type:'room',online:num(m,3),viewers:num(m,7)}
+-    case 'WebcastControlMessage': return {type:'control',status:num(m,2)}
+     default:return null
+   }
+ }
+ function parseRoom(html) {
+   const plain=html.replace(/\\{1,7}"/g,'"')
+   const roomId=plain.match(/"roomId"\s*:\s*"(\d+)"/)?.[1]
+   const uniqueId=plain.match(/"user_unique_id"\s*:\s*"(\d+)"/)?.[1]
+   return {roomId,uniqueId,title:plain.match(/"room"\s*:\s*\{[\s\S]*?"title"\s*:\s*"([^"]*)"/)?.[1]||'',nickname:plain.match(/"anchor"\s*:\s*\{[\s\S]*?"nickname"\s*:\s*"([^"]*)"/)?.[1]||''}
+ }
+-module.exports={fields,str,num,encode,frame,response,decodeFrame,event,parseRoom}
++module.exports={fields,str,num,encode,frame,response,decodeFrame,event,parseRoom,isSupportedMethod}
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-ui-before-20260929/electron/douyin.cjs b/electron/douyin.cjs
+index 26ad852..f1a3723 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-ui-before-20260929/electron/douyin.cjs
++++ b/electron/douyin.cjs
+@@ -1,24 +1,26 @@
+ const { WebSocket } = require('ws')
+ const { createHash } = require('node:crypto')
+ const wire = require('./douyin-wire.cjs')
++const {createDiagnostics}=require('./douyin-diagnostics.cjs')
+ const {createDouyinSession,parseCredential}=require('./douyin-session.cjs')
+ const SITE='https://live.douyin.com'
+ const {requestDouyinGifts}=require('./douyin-gifts.cjs')
+ 
+ // An isolated official-page session supplies current cookies and signed bootstrap
+ // parameters. The application owns its websocket, heartbeat, ACK, decoder and retries.
+ // Nothing is relayed from dycast or DouyinLiveWebFetcher, nor loaded from their paths.
+ function createDouyin({BrowserWindow,session,onState,onEvent,WebSocketImpl=WebSocket,vault,autoVerify=false,requestProfile}) {
++  const diagnostics=createDiagnostics()
+   const auth=createDouyinSession({BrowserWindow,session,vault,autoVerify,requestProfile,onChange:()=>onState()})
+   const ses=auth.session
+   ses.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false))
+   let helper,ws,timer,timeout,retryTimer,revision=0,room='',stopped=true,attempt=0,cursor='',internalExt='',lastFrame=0
+-  let state={status:'idle',message:'尚未连接',received:0,decoded:0,errors:0,giftReceived:0,giftDecoded:0,giftErrors:0,lastMessageAt:null,room:''}
++  let state={status:'idle',message:'尚未连接',received:0,decoded:0,errors:0,unsupported:0,ignored:0,frameErrors:0,processingErrors:0,giftReceived:0,giftDecoded:0,giftErrors:0,lastMessageAt:null,room:''}
+   const emit=(patch)=>{state={...state,...patch};onState(state)}
+   const allowed=url=>{try{const u=new URL(url);return u.protocol==='wss:' && (u.hostname==='douyin.com'||u.hostname.endsWith('.douyin.com')) && u.pathname==='/webcast/im/push/v2/'}catch{return false}}
+   function cleanup() {
+     clearInterval(timer);clearTimeout(timeout);clearTimeout(retryTimer)
+     ses.webRequest.onBeforeRequest(null)
+     ws?.removeAllListeners();ws?.on('error',()=>{});ws?.terminate();ws=null
+     if(helper&&!helper.isDestroyed())helper.destroy();helper=null
+   }
+@@ -46,36 +48,49 @@ function createDouyin({BrowserWindow,session,onState,onEvent,WebSocketImpl=WebSo
+       clearTimeout(timeout);lastFrame=Date.now()
+       emit({status:'connected',message:'抖音推送已连接，等待消息'})
+       if(helper&&!helper.isDestroyed())helper.destroy();helper=null;ses.webRequest.onBeforeRequest(null)
+       timer=setInterval(()=>{if(ws?.readyState!==WebSocket.OPEN)return;if(Date.now()-lastFrame>45000){failed(new Error('45 秒未收到推送帧'),rev);return}ws.send(wire.frame('hb'))},10000)
+     })
+     ws.on('message',data=>{
+       if(rev!==revision)return
+       lastFrame=Date.now()
+-      try {
+-        const f=wire.decodeFrame(data)
+-        if(f.type==='close'){failed(new Error('服务端要求关闭连接'),rev);return}
+-        if(!f.response)return
+-        const r=f.response
+-        if(r.needAck)ws.send(wire.frame('ack',Buffer.from(r.internalExt),f.logId))
+-        cursor=r.cursor||cursor;internalExt=r.internalExt||internalExt
+-        let decoded=0,errors=0,giftReceived=0,giftDecoded=0,giftErrors=0
+-        for(const m of r.messages)try {
+-          if(m.method==='WebcastGiftMessage')giftReceived++
+-          const e=wire.event(m,roomId)
+-          if(!e)continue
+-          if(e.type==='room'){emit({online:e.online,viewers:e.viewers});continue}
+-          if(e.type==='control'){if([3,4,6].includes(e.status)){stop();emit({message:'直播已结束'});return}continue}
++      let f
++      try{f=wire.decodeFrame(data)}catch(error){
++        diagnostics.record({stage:'frame',error,payloadSize:data?.length})
++        emit({frameErrors:state.frameErrors+1,message:'部分推送帧无法解码，请检查协议兼容性'})
++        return
++      }
++      if(f.type==='close'){failed(new Error('服务端要求关闭连接'),rev);return}
++      if(!f.response)return
++      const r=f.response
++      cursor=r.cursor||cursor;internalExt=r.internalExt||internalExt
++      try{if(r.needAck)ws.send(wire.frame('ack',Buffer.from(r.internalExt),f.logId))}
++      catch(error){diagnostics.record({stage:'processing',error,payloadSize:data?.length});emit({processingErrors:state.processingErrors+1})}
++      let decoded=0,errors=0,unsupported=0,ignored=0,processingErrors=0,giftReceived=0,giftDecoded=0,giftErrors=0
++      for(const m of r.messages){
++        if(m.method==='WebcastGiftMessage')giftReceived++
++        if(!wire.isSupportedMethod(m.method)){unsupported++;continue}
++        let e
++        try{e=wire.event(m,roomId)}catch(error){
++          errors++;if(m.method==='WebcastGiftMessage')giftErrors++
++          diagnostics.record({method:m.method,stage:'decode',error,payloadSize:m.payload?.length})
++          continue
++        }
++        if(!e){ignored++;continue}
++        if(e.type==='room'){emit({online:e.online,viewers:e.viewers});continue}
++        if(e.type==='control'){if([3,4,6].includes(e.status)){stop();emit({message:'直播已结束'});return}continue}
++        if(e.type==='gift')giftDecoded++
++        decoded++
++        try{
+           if(e.type==='enter' && e.online)emit({online:e.online})
+-          if(e.type==='gift')giftDecoded++
+-          decoded++;onEvent(e)
+-        }catch{errors++;if(m.method==='WebcastGiftMessage')giftErrors++}
+-        attempt=0;emit({received:state.received+r.messages.length,decoded:state.decoded+decoded,errors:state.errors+errors,giftReceived:state.giftReceived+giftReceived,giftDecoded:state.giftDecoded+giftDecoded,giftErrors:state.giftErrors+giftErrors,lastMessageAt:Date.now(),message:`正在接收直播消息${errors?'，部分消息解码失败':''}`})
+-      }catch{emit({errors:state.errors+1,message:'部分推送帧无法解码，请检查协议兼容性'})}
++          onEvent(e)
++        }catch(error){processingErrors++;diagnostics.record({method:m.method,stage:'processing',error,payloadSize:m.payload?.length})}
++      }
++      attempt=0;emit({received:state.received+r.messages.length,decoded:state.decoded+decoded,errors:state.errors+errors,unsupported:state.unsupported+unsupported,ignored:state.ignored+ignored,processingErrors:state.processingErrors+processingErrors,giftReceived:state.giftReceived+giftReceived,giftDecoded:state.giftDecoded+giftDecoded,giftErrors:state.giftErrors+giftErrors,lastMessageAt:Date.now(),message:`正在接收直播消息${errors?'，部分消息解码失败':''}`})
+     })
+     ws.on('error',e=>failed(new Error(`WebSocket 连接失败：${e.message.split('?')[0]}`),rev))
+     ws.on('close',code=>{if(rev===revision&&!stopped)failed(new Error(`连接关闭 (${code})，断线期间可能漏收`),rev)})
+   }
+   async function boot(rev) {
+     emit({status:'initializing',message:'正在初始化抖音官方网页会话与签名',room})
+     let captured=false
+     timeout=setTimeout(()=>failed(new Error('网页初始化超时，可能需要登录或完成验证'),rev),35000)
+@@ -107,20 +122,22 @@ function createDouyin({BrowserWindow,session,onState,onEvent,WebSocketImpl=WebSo
+         const keys='live_id,aid,version_code,webcast_sdk_version,room_id,sub_room_id,sub_channel_id,did_rule,user_unique_id,device_platform,device_type,ac,identity'.split(',')
+         const stub=createHash('md5').update(keys.map(k=>`${k}=${opts[k]||''}`).join(',')).digest('hex')
+         const signature=await helper.webContents.executeJavaScript(`window.byted_acrawler?.frontierSign({'X-MS-STUB':${JSON.stringify(stub)}})?.['X-Bogus'] || ''`)
+         if(signature&&!captured&&rev===revision){captured=true;const url=new URL(im.pushServer);for(const [k,v] of Object.entries({...opts,signature}))url.searchParams.set(k,v);await ownSocket(url.toString(),rev)}
+       }
+     }catch(e){if(!captured)failed(new Error(`会话初始化失败：${e.message.split('?')[0]}`),rev)}
+   }
+   return {
+-    connect(id){if(auth.snapshot().busy)throw Error('正在更新登录凭据，请稍候');if(!/^\d{1,30}$/.test(id))throw new Error('请输入正确的数字房间号');stop();room=id;cursor='';internalExt='';attempt=0;stopped=false;state={status:'initializing',message:'',received:0,decoded:0,errors:0,giftReceived:0,giftDecoded:0,giftErrors:0,lastMessageAt:null,room};boot(++revision)},
++    connect(id){if(auth.snapshot().busy)throw Error('正在更新登录凭据，请稍候');if(!/^\d{1,30}$/.test(id))throw new Error('请输入正确的数字房间号');stop();room=id;cursor='';internalExt='';attempt=0;stopped=false;diagnostics.clear();state={status:'initializing',message:'',received:0,decoded:0,errors:0,unsupported:0,ignored:0,frameErrors:0,processingErrors:0,giftReceived:0,giftDecoded:0,giftErrors:0,lastMessageAt:null,room};boot(++revision)},
+     stop,
+     showSession:(id=room)=>auth.showLogin(id),
+     async importCredential(input){parseCredential(input);stop();await auth.importCredential(input);emit({message:'登录 Cookie 已导入，请重新连接直播间；礼物仍需实际事件验证'})},
+     async clearCredential(){stop();await auth.clearCredential();emit({message:'登录 Cookie 已清除，推送已断开'})},
+     refreshAuth:()=>auth.verify(),
+     getGifts:signal=>requestDouyinGifts(ses,signal),
++    diagnostics:()=>diagnostics.snapshot(),
++    clearDiagnostics:()=>diagnostics.clear(),
+     dispose(){stop();auth.dispose()},
+     snapshot:()=>({...state,auth:auth.snapshot()})
+   }
+ }
+ module.exports={createDouyin}
+
+diff --git a/tests/douyin-connector.test.cjs b/tests/douyin-connector.test.cjs
+new file mode 100644
+index 0000000..db3c797
+--- /dev/null
++++ b/tests/douyin-connector.test.cjs
+@@ -0,0 +1,55 @@
++const {test}=require('node:test')
++const assert=require('node:assert/strict')
++const {EventEmitter}=require('node:events')
++const {createDouyin}=require('../electron/douyin.cjs')
++const wire=require('../electron/douyin-wire.cjs')
++
++function fixture(onEvent=()=>{}){
++  const windows=[],sockets=[],cookies=Object.assign(new EventEmitter(),{get:async()=>[],set:async()=>{},flushStore:async()=>{}})
++  const ses={cookies,setPermissionRequestHandler(){},getUserAgent:()=> 'test-agent',clearStorageData:async()=>{},webRequest:{onBeforeRequest(_filter,cb){ses.interceptor=cb||null}}}
++  class Window extends EventEmitter{
++    constructor(options){super();this.destroyed=false;this.webContents=Object.assign(new EventEmitter(),{id:windows.length+1,setAudioMuted(){},setWindowOpenHandler(){},executeJavaScript:async()=>'<html></html>'});windows.push(this)}
++    loadURL(){return Promise.resolve()}
++    isDestroyed(){return this.destroyed}
++    destroy(){this.destroyed=true}
++  }
++  class Socket extends EventEmitter{
++    static OPEN=1
++    constructor(url){super();this.url=url;this.readyState=1;this.sent=[];sockets.push(this)}
++    send(data){this.sent.push(data)}
++    terminate(){}
++  }
++  const dy=createDouyin({BrowserWindow:Window,session:{fromPartition:()=>ses},WebSocketImpl:Socket,onState(){},onEvent})
++  return {dy,ses,windows,sockets,async open(){dy.connect('123');await new Promise(resolve=>setImmediate(resolve));ses.interceptor({url:'wss://test.douyin.com/webcast/im/push/v2/?room_id=123',webContentsId:windows[0].webContents.id},()=>{});await new Promise(resolve=>setImmediate(resolve));sockets[0].emit('open');return sockets[0]}}
++}
++const item=(method,payload,id)=>wire.encode([[1,method],[2,payload],[3,id]])
++const batch=(messages,ack=0)=>wire.frame('msg',wire.encode([...messages.map(message=>[1,message]),[2,'next-cursor'],[5,'ack-ext'],[9,ack]]),'88')
++
++test('connector classifies unsupported, ignored, decode and callback failures and continues batch',async()=>{
++  const events=[],f=fixture(event=>{events.push(event);if(event.text==='throw')throw Error('cookie=private')})
++  try{
++    const socket=await f.open()
++    socket.emit('message',batch([
++      item('UnrecognizedMethod',Buffer.from([10,255]),1),
++      item('WebcastSocialMessage',wire.encode([[4,2]]),2),
++      item('WebcastChatMessage',Buffer.from([10,255]),3),
++      item('WebcastChatMessage',wire.encode([[3,'throw']]),4),
++      item('WebcastChatMessage',wire.encode([[3,'after']]),5)
++    ],1))
++    const state=f.dy.snapshot()
++    assert.equal(state.received,5);assert.equal(state.decoded,2)
++    assert.equal(state.unsupported,1);assert.equal(state.ignored,1)
++    assert.equal(state.errors,1);assert.equal(state.processingErrors,1);assert.equal(state.frameErrors,0)
++    assert.deepEqual(events.map(event=>event.text),['throw','after'])
++    assert.equal(socket.sent.length,1);assert.equal(wire.decodeFrame(socket.sent[0]).type,'ack')
++    assert.equal(f.dy.diagnostics().length,2)
++    assert.ok(!JSON.stringify(f.dy.diagnostics()).includes('private'))
++    f.dy.clearDiagnostics();assert.deepEqual(f.dy.diagnostics(),[])
++  }finally{f.dy.dispose()}
++})
++
++test('damaged frame increments frameErrors without consuming message decode errors',async()=>{
++  const f=fixture()
++  try{const socket=await f.open();socket.emit('message',Buffer.from([10,255]));const state=f.dy.snapshot();assert.equal(state.frameErrors,1);assert.equal(state.errors,0);assert.equal(state.received,0);assert.equal(f.dy.diagnostics()[0].stage,'frame')}
++  finally{f.dy.dispose()}
++})
+diff --git a/tests/douyin-diagnostics.test.cjs b/tests/douyin-diagnostics.test.cjs
+new file mode 100644
+index 0000000..2cac1a4
+--- /dev/null
++++ b/tests/douyin-diagnostics.test.cjs
+@@ -0,0 +1,25 @@
++const {test}=require('node:test')
++const assert=require('node:assert/strict')
++const {createDiagnostics}=require('../electron/douyin-diagnostics.cjs')
++
++test('diagnostics retain only 50 newest safe metadata entries',()=>{
++  const diagnostics=createDiagnostics()
++  for(let i=0;i<51;i++)diagnostics.record({method:'WebcastChatMessage',stage:'decode',error:Object.assign(Error('cookie=secret https://private.example/'),{code:'ERR_INVALID_ARG_TYPE'}),payloadSize:i})
++  const entries=diagnostics.snapshot()
++  assert.equal(entries.length,50)
++  assert.equal(entries[0].payloadSize,1)
++  assert.equal(entries.at(-1).payloadSize,50)
++  assert.deepEqual(Object.keys(entries[0]).sort(),['code','method','payloadSize','stage','timestamp'])
++  assert.equal(entries[0].code,'ERR_INVALID_ARG_TYPE')
++  assert.equal(typeof entries[0].timestamp,'number')
++  assert.ok(!JSON.stringify(entries).includes('secret'))
++  diagnostics.clear()
++  assert.deepEqual(diagnostics.snapshot(),[])
++})
++
++test('diagnostics reject unsafe method, stage, code and payload size',()=>{
++  const diagnostics=createDiagnostics()
++  diagnostics.record({method:'WebcastChatMessage?cookie=secret',stage:'processing?url=private',error:Object.assign(Error('user=private'),{code:'TOKEN_SECRET'}),payloadSize:Infinity})
++  assert.deepEqual(diagnostics.snapshot().map(({timestamp,...entry})=>entry),[{method:'unknown',stage:'unknown',code:'UNKNOWN',payloadSize:0}])
++  assert.ok(!JSON.stringify(diagnostics.snapshot()).includes('secret'))
++})
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-ui-before-20260929/tests/douyin-wire.test.cjs b/tests/douyin-wire.test.cjs
+index 7633226..dcbce2c 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-ui-before-20260929/tests/douyin-wire.test.cjs
++++ b/tests/douyin-wire.test.cjs
+@@ -1,13 +1,23 @@
+ const {test}=require('node:test')
+ const assert=require('node:assert/strict')
+ const zlib=require('node:zlib')
+ const w=require('../electron/douyin-wire.cjs')
+ const {createNormalizer}=require('../electron/interaction-normalizer.cjs')
++test('control status decodes without a message or user identity',()=>{
++  assert.deepEqual(w.event({method:'WebcastControlMessage',payload:w.encode([[2,3]])},'room'),{type:'control',status:3})
++})
++test('unknown method ignores numeric user-shaped data and malformed payload',()=>{
++  assert.equal(w.event({method:'UnknownMethod',payload:w.encode([[2,3]])},'room'),null)
++  assert.equal(w.event({method:'UnknownMethod',payload:Buffer.from([10,255])},'room'),null)
++})
++test('supported malformed protobuf throws',()=>{
++  assert.throws(()=>w.event({method:'WebcastChatMessage',payload:Buffer.from([10,255])},'room'))
++})
+ test('gzip 推送解码和 ACK 保持超出 Number 精度的消息 ID',()=>{
+   const id=7497180536918546638n
+   const payload=w.encode([[1,w.encode([[1,'WebcastChatMessage'],[2,Buffer.alloc(0)],[3,id]])],[2,'cursor'],[5,'ext'],[9,1]])
+   const decoded=w.decodeFrame(w.encode([[2,id],[6,'gzip'],[7,'msg'],[8,zlib.gzipSync(payload)]]))
+   assert.equal(decoded.logId,id.toString());assert.equal(decoded.response.messages[0].id,id.toString());assert.equal(decoded.response.needAck,true)
+   const ack=w.fields(w.frame('ack',Buffer.from(decoded.response.internalExt),decoded.logId))
+   assert.equal(w.str(ack,2),id.toString());assert.equal(w.str(ack,8),'ext')
+ })
+
+

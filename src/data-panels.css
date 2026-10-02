@@ -1,0 +1,20 @@
+/* Scope all field rules to game data; other settings keep their own rhythm. */
+#panel-data{overflow-x:hidden;scrollbar-gutter:stable;overscroll-behavior:contain}
+.data-panel{margin-bottom:16px;min-width:0}
+.data-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 22px}
+.data-sections{display:grid;gap:20px}
+.data-section{min-width:0;padding:18px;border:1px solid var(--line);border-radius:12px;background:#fffefc}
+.data-section>h3{margin:0 0 14px;line-height:1.5;font-size:15px}
+.data-panel .fields{grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;align-items:start}
+.data-panel .field{padding:11px 12px;background:#f8f4fa;min-width:0}
+.data-panel .field-label{margin-bottom:6px;line-height:1.5;overflow-wrap:anywhere}
+.data-panel .field-value{display:block;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.data-panel .field-group{grid-column:1/-1;padding:14px;border:1px solid #eee7f0;background:#fff;border-radius:10px}
+.data-panel .field-group>.field-label{margin-bottom:12px;font-weight:600;color:#665471}
+.data-panel .field-group>.fields{grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr))}
+.data-panel .fields-array,.data-panel .field-group>.fields-array{grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr))}
+.data-panel .fields-array>.field-group{grid-column:auto}
+.data-panel .player-details{min-width:0;padding:14px 0}
+.data-panel .player-details summary{overflow-wrap:anywhere;line-height:1.6}
+.data-panel .raw-data{margin-top:16px}
+@media(max-width:1000px){.data-section{padding:14px}.data-sections{gap:18px}.data-panel .field-group{padding:12px}}

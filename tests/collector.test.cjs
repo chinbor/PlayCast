@@ -1,0 +1,18 @@
+const { test } = require('node:test')
+const assert = require('node:assert/strict')
+const { createTracker, mockGame } = require('../electron/collector.cjs')
+test('重复轮询不会重复报告击杀，新对局时间回退后可以重新报告', () => {
+  const tracker = createTracker()
+  assert.equal(tracker.update(mockGame(8)).length, 2)
+  assert.equal(tracker.update(mockGame(8)).length, 0)
+  assert.equal(tracker.update(mockGame(12)).length, 1)
+  assert.equal(tracker.update(mockGame(4)).length, 1)
+})
+test('切换模式重置事件，非击杀事件不进入击杀列表', () => {
+  const tracker = createTracker()
+  const data = mockGame(4)
+  data.events.Events.push({ EventID: 99, EventName: 'GameStart' })
+  assert.equal(tracker.update(data).length, 1)
+  tracker.reset()
+  assert.equal(tracker.update(data).length, 1)
+})

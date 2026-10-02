@@ -1,0 +1,386 @@
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/electron/local-store.cjs b/electron/local-store.cjs
+index 22698f1..ef2f33f 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/electron/local-store.cjs
++++ b/electron/local-store.cjs
+@@ -38,13 +38,13 @@ async function atomic(file,text){
+  await io.rename(file+'.tmp',file)
+ }
+ // Startup is read-only. One active commit and one replaceable latest state;
+ // challenge progress and replay watermarks always share the same journal frame.
+ function createLocalStore(directory,{onStatus=()=>{},checkpointEvery=64}={}){
+  const root=path.join(directory,'local-store'),journal=path.join(root,'journal.ndjson'),checkpoint=path.join(root,'checkpoint.json')
+- let saved={},seq=0,error=null,blocked=false,tail=null,running=null,latest=null,active=null,cachePending,commits=0,bytesWritten=0,revision=0,savedRevision=0
++ let saved={},seq=0,error=null,blocked=false,tail=null,repairOffset=null,running=null,latest=null,active=null,cachePending,commits=0,bytesWritten=0,revision=0,savedRevision=0
+  const details=new Map()
+  let found=false
+  for(const file of [checkpoint,checkpoint+'.bak']){
+   if(!fs.existsSync(file))continue
+   found=true
+   try{const c=unpack(fs.readFileSync(file,'utf8'));if(!Number.isSafeInteger(c.seq)||!object(c.state))throw Error('Invalid checkpoint');saved=c.state;seq=c.seq;blocked=false;break}catch{blocked=true}
+@@ -64,27 +64,31 @@ function createLocalStore(directory,{onStatus=()=>{},checkpointEvery=64}={}){
+  }
+  if(blocked)error||={category:'recovery',message:'Checkpoint recovery failed; files preserved'}
+  let committed=structuredClone(saved)
+  const detailPath=id=>path.join(root,'history',digest(String(id))+'.json')
+  const status=()=>({pending:!!latest||!!running,savedRevision,revision,error,commits,bytesWritten,blocked})
+  const notify=()=>onStatus(status())
++ async function repairJournal(){const h=await io.open(journal,'r+');try{await h.truncate(repairOffset);await h.sync();repairOffset=null}finally{await h.close()}}
+  async function drain(){
+   await io.mkdir(path.join(root,'history'),{recursive:true})
++  if(repairOffset!==null)await repairJournal()
+   if(tail!==null){await io.copyFile(journal,journal+'.recovery');await io.truncate(journal,tail);tail=null}
+   while(latest){
+    const next=latest;active=next;latest=null
+    for(const [id,record] of details){
+     const file=detailPath(id)
+     try{await io.access(file)}catch{await atomic(file,pack(record))}
+     details.delete(id)
+    }
+    if(cachePending!==undefined){const cache=cachePending;await atomic(path.join(root,'cache.json'),JSON.stringify(cache));if(cachePending===cache)cachePending=undefined}
+    const changes=delta(committed,next.state)
+    if(changes.length){
+     const line=pack({seq:seq+1,changes})+'\n',handle=await io.open(journal,'a')
+-    try{await handle.writeFile(line);await handle.sync()}finally{await handle.close()}
++    const before=(await handle.stat()).size
++    try{try{await handle.writeFile(line);await handle.sync()}finally{await handle.close()}}
++    catch(e){repairOffset=before;try{await repairJournal()}catch{}throw e}
+     seq++;committed=next.state;commits++;bytesWritten+=Buffer.byteLength(line)
+     if(seq===1||seq%checkpointEvery===0){
+      const value=pack({seq,state:committed})
+      await atomic(checkpoint,value);await atomic(checkpoint+'.bak',value)
+      const handle=await io.open(journal,'w');try{await handle.sync()}finally{await handle.close()}
+     }
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/electron/main.cjs b/electron/main.cjs
+index 98cfe1b..46f01d9 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/electron/main.cjs
++++ b/electron/main.cjs
+@@ -32,13 +32,13 @@ async function openOverlay(){
+ app.on('second-instance',()=>{main?.show();main?.focus()})
+ app.whenReady().then(async()=>{
+   if(smoke)await require('../tests/fixtures/account-response.cjs').installAvatarFixture(session.defaultSession)
+   main=new BrowserWindow({width:1360,height:920,minWidth:960,minHeight:700,show:!smoke&&!liveProbe,title:'Live Interaction Tool',autoHideMenuBar:true,webPreferences:preferences()})
+   const capabilitySmoke=smoke&&process.env.LIT_SMOKE_CASE==='capabilities'
+   const smokeAdapters=capabilitySmoke?{'comment-only':require('../tests/fixtures/comment-platform.cjs')}:smoke?{douyin:require('../tests/fixtures/smoke-platform.cjs')({BrowserWindow,session})}:undefined
+-  product=createProduct({app,BrowserWindow,session,safeStorage,accountRequest:smoke?require('../tests/fixtures/account-response.cjs'):undefined,adapterFactories:smokeAdapters,globalShortcut,smoke:smoke||!!liveProbe,getWindow:()=>main,getOverlay:()=>overlay,openOverlay,switchMode})
++  product=createProduct({app,BrowserWindow,session,safeStorage,accountRequest:smoke?require('../tests/fixtures/account-response.cjs'):undefined,adapterFactories:smokeAdapters,globalShortcut,smoke:smoke||!!liveProbe,getWindow:()=>main,getOverlay:()=>overlay,openOverlay,switchMode,onContextChange:()=>{gameSubscribed=false;lastGameSent=0}})
+   function trusted(event){if(event.sender!==main.webContents&&event.sender!==overlay?.webContents)throw new Error('无权访问')}
+   ipcMain.handle('product:get',event=>{trusted(event);return event.sender===main.webContents?product.display():product.overlay()})
+   ipcMain.handle('product:query',(event,type,options)=>{if(event.sender!==main.webContents)throw new Error('无权访问');return product.query(type,options)})
+   ipcMain.handle('product:action',(event,type,value)=>{if(event.sender!==main.webContents)throw new Error('无权操作');return product.action(type,value)})
+   const mayReadGame=()=>{const s=product.display();return s.source==='test'||s.account.status==='authenticated'}
+   ipcMain.handle('collector:get',event=>{if(event.sender!==main.webContents)throw new Error('无权访问');return mayReadGame()?lastSnapshot:{status:'waiting',mode}})
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/electron/product.cjs b/electron/product.cjs
+index a0d6863..4344bda 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/electron/product.cjs
++++ b/electron/product.cjs
+@@ -8,18 +8,19 @@ const {createFeed}=require('./message-feed.cjs')
+ const {createCredentialVault}=require('./credential-vault.cjs')
+ const {createPlatformRegistry,createDouyinAdapter}=require('./platforms.cjs')
+ const {createGiftCatalog}=require('./gift-catalog.cjs')
+ const {scopeKey,matchesProvenance}=require('./interaction-normalizer.cjs')
+ const sameScope=(a,b)=>!!a&&!!b&&['platformId','accountScope','roomId'].every(k=>a[k]===b[k])
+ const allowedChallengeActions=new Set(['start','pause','end','finish','rules','target','targetDelta','completed','completeDelta','pending','undoPending','rebase'])
+-function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,giftRequest,adapterFactories,globalShortcut,smoke,getWindow,getOverlay,openOverlay,switchMode}){
++function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,giftRequest,adapterFactories,globalShortcut,smoke,getWindow,getOverlay,openOverlay,switchMode,onContextChange=()=>{}}){
+   const file=path.join(app.getPath('userData'),'challenge-v1.json')
+   let saved,error='',publishTimer,source='live',platforms,disposed=false,lastGame=null,giftAbort,giftLoading=false,interactionWarning=null
+   let readFailed=false,corruptPrimary=false
+   let cacheDirty=false,stopping,legacyFile=null
+   let persistScheduled=false,persistencePending=false
++  let lastContext=null
+   let collector={status:'waiting',mode:'live'}
+   const store=smoke?null:createLocalStore(app.getPath('userData'),{onStatus:()=>changed(false)})
+   const object=value=>!!value&&typeof value==='object'&&!Array.isArray(value)
+   const text=value=>typeof value==='string'&&!!value.trim()
+   const natural=value=>Number.isSafeInteger(value)&&value>=0
+   const binding=value=>object(value)&&['platformId','accountScope','roomId'].every(key=>text(value[key]))
+@@ -139,25 +140,26 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+           payloadSize:Number.isSafeInteger(e.payloadSize)&&e.payloadSize>=0&&e.payloadSize<=8*1024*1024?e.payloadSize:0}
+       })
+       return {items,scope:visible?{...diagnosticScope}:null,limit:50}
+     }
+     if(type==='history')return {...collection.query(owner,options),version:collection.version}
+     if(type==='historyDetail'){const identity=JSON.stringify(owner),origin=source;const value=await collection.detail(owner,options.id);const now=source==='test'?demoScope():account().status==='authenticated'&&selected&&account().profile?.id?{platformId:selected,accountScope:account().profile.id}:null;return origin===source&&identity===JSON.stringify(now)?value:null}
+-    if(type==='feed')return (authenticated?feed():hiddenFeed).query(options)
++    if(type==='feed')return (source==='test'||authenticated&&sameScope(confirmed,scope())?feed():hiddenFeed).query(options)
+     if(type==='gifts'){if(!platform().descriptor.capabilities.giftCatalog)return {items:[],status:'unsupported',scope:null,loading:false,version:catalog.version};const b=source==='live'&&authenticated&&sameScope(confirmed,scope())?scope():null;const c=catalog.snapshot(b);return {items:c.items,status:c.status,message:c.message,scope:c.scope,loading:giftLoading,version:catalog.version}}
+     if(type==='storage')return store?store.usage():{categories:{hot:0,history:0,cache:0,recovery:0},total:0,pending:false,error:null}
+     throw Error('Unsupported query')
+   }
+   function broadcast(){if(!platforms||disposed)return;const w=getWindow(),o=getOverlay();if(w&&!w.isDestroyed())w.webContents.send('product:state',display());if(o&&!o.isDestroyed())o.webContents.send('product:state',overlay())}
+   function persist(){
+     if(!store||readFailed)return
+     library.put(live)
+     const payload={version:4,challenge:live.state,library:library.export(),room,setup:{platformId:selected,confirmed},presets,normalizers:Object.fromEntries(platforms.list().map(p=>[p.id,platforms.get(p.id).exportNormalizer?.()]))}
+     store.save(payload,library.pending(),cacheDirty?catalog.export():undefined);cacheDirty=false
+   }
+   async function flush(){
++    if(readFailed)return {...store?.status(),pending:false,blocked:true,error:{category:'recovery',message:error||'存档读取失败'}}
+     persistencePending=false;persist()
+     if(store){
+       await store.flush()
+       if(legacyFile&&!store.status().error){
+         try{
+           const recovered=createLocalStore(app.getPath('userData'))
+@@ -166,14 +168,16 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+         }catch(e){error='保存失败：'+e.message;return {...store.status(),error:{category:'migration',message:error}}}
+       }
+       library.release();return store.status()
+     }
+     return {pending:false,error:readFailed?{category:'recovery',message:error}:null}
+   }
++  async function requireDurable(){const result=await flush();if(result.error)throw Object.assign(Error(`${result.error.category==='recovery'?'存档恢复失败':'保存失败'}：${result.error.message}`),{code:'PERSISTENCE_ERROR',category:result.error.category});return result}
+   function changed(save=true){
+     if(disposed)return
++    if(platforms){const context=JSON.stringify([source,selected,account().status,account().profile?.id,room,confirmed]);if(context!==lastContext){lastContext=context;onContextChange()}}
+     if(save){persistencePending=true;if(!persistScheduled){persistScheduled=true;queueMicrotask(()=>{persistScheduled=false;if(persistencePending){persistencePending=false;persist()}})}}
+     if(!publishTimer)publishTimer=setTimeout(()=>{publishTimer=undefined;broadcast()},250)
+   }
+   function cancelGifts(){giftAbort?.abort();giftAbort=null;giftLoading=false}
+   function onState(id){
+     if(!platforms||id!==selected){changed(false);return}
+@@ -230,17 +234,17 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+     catch{if(!controller.signal.aborted&&sameScope(bound,scope()))catalog.fail(bound)}
+     finally{if(giftAbort===controller){giftLoading=false;giftAbort=null;changed()}}
+   }
+   async function action(type,value){
+     if(type==='source'){
+       if(!['live','test'].includes(value))throw Error('无效来源')
+-      if(value!==source){park(current(),source==='live'?library:demoLibrary);disconnect();await flush();source=value;feeds[source].resetSequence();if(source==='test')selectDemoForCurrentScope();lastGame=null;switchMode(source==='test'?'mock':'live')}
++      if(value!==source){park(current(),source==='live'?library:demoLibrary);disconnect();await requireDurable();source=value;feeds[source].resetSequence();if(source==='test')selectDemoForCurrentScope();lastGame=null;switchMode(source==='test'?'mock':'live')}
+     }else if(type==='selectPlatform'){
+       if(source!=='live')throw Error('请先切换正式模式')
+       platforms.get(value)
+-      if(selected!==value){park(live,library);disconnect();selected=value;room='';confirmed=null;lastAccount=account().profile?.id||null;selectScopeDraft(null)}
++      if(selected!==value){park(live,library);disconnect();await requireDurable();selected=value;feeds.live=createFeed();room='';confirmed=null;lastAccount=account().profile?.id||null;selectScopeDraft(null)}
+     }else if(type==='confirmRoom'||type==='connect'){
+       if(source!=='live')throw Error('请先切换到正式模式');if(!selected)selected=platform().descriptor.id;confirmRoom(value)
+     }else if(type==='disconnect')disconnect()
+     else if(type==='refreshGifts')await refreshGifts()
+     else if(type==='bindLegacy'){requireLogin();if(!sameScope(confirmed,scope()))throw Error('请先确认直播间');live.action('bindLegacy',scope());unboundLegacy=null;library.put(live)}
+     else if(type==='chooseGameplay'){
+@@ -269,18 +273,18 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+         const next=createChallenge();next.action('configure',{...value,binding:demoBinding});park(test,demoLibrary);test=next;demoLibrary.put(test)
+       }
+       gameplayChoice=false
+     }else if(['login','credential','clearCredential','logout','refreshAuth'].includes(type)){
+       if(source!=='live')throw Error('请在正式模式中管理平台登录')
+       if(type==='login')platform().login(typeof value==='string'?value:room)
+-      else if(type==='credential'){if(!platform().importCredential)throw Error('此平台不支持手动导入');park(live,library);disconnect();await platform().importCredential(value)}
+-      else if(type==='logout'||type==='clearCredential'){park(live,library);const old=scope();disconnect();confirmed=null;await flush();await platform().logout();selectScopeDraft(null);if(old){catalog.clearAccount(old.platformId,old.accountScope);cacheDirty=true}}
++      else if(type==='credential'){if(!platform().importCredential)throw Error('此平台不支持手动导入');park(live,library);disconnect();await requireDurable();await platform().importCredential(value)}
++      else if(type==='logout'||type==='clearCredential'){park(live,library);const old=scope();disconnect();await requireDurable();confirmed=null;await platform().logout();selectScopeDraft(null);if(old){catalog.clearAccount(old.platformId,old.accountScope);cacheDirty=true}}
+       else await platform().refreshAccount()
+     }else if(type==='overlay')openOverlay()
+     else if(type==='clearFeed')feed().clear()
+-    else if(type==='clearCaches'){await flush();try{await store?.clearCache();catalog.clear();for(const p of platforms.list())platforms.get(p.id).clearDiagnostics?.()}catch(e){error='清理缓存失败：'+e.message;changed(false);throw e}}
++    else if(type==='clearCaches'){await requireDurable();try{await store?.clearCache();catalog.clear();for(const p of platforms.list())platforms.get(p.id).clearDiagnostics?.()}catch(e){error='清理缓存失败：'+e.message;changed(false);throw e}}
+     else if(type==='simulate'){
+       if(source!=='test')throw Error('仅演练模式可生成模拟互动')
+       if(!['enter','follow','like','comment','gift','batch'].includes(value))throw Error('无效互动')
+       const types=value==='batch'?['enter','comment','like','follow','gift','enter','comment','like','comment','gift','enter','follow']:[value]
+       const names=['小橘同学','奶茶半糖','今天也要开心','一只小团子','晚风与星星','好运来敲门']
+       types.forEach((type,i)=>{const gift=test.state.rules.gifts?.[0],e={id:randomUUID(),platformId:gift?.platformId||'douyin',userId:'demo-'+i+'-'+randomUUID(),userName:names[i%names.length],type,count:type==='like'?100:1,text:types.length>1?['这波操作可以！','主播加油呀 ✨','冲冲冲，下一个目标拿下！'][i%3]:'主播加油',giftId:gift?.giftId||'demo-gift',giftName:gift?.name||'演练礼物',online:128,createdAt:Date.now(),...test.state.binding};feed().ingest(e);test.event(e)})
+@@ -294,13 +298,13 @@ function createProduct({app,BrowserWindow,session,safeStorage,accountRequest,gif
+       if(type==='end'||type==='finish'){
+         const challenge=current(),collection=source==='live'?library:demoLibrary
+         collection.settle(challenge,challenge.snapshot().completed>=challenge.state.target?'completed':'ended-early',challenge.state.endedAt)
+       }else (source==='live'?library:demoLibrary).put(current())
+       if(type==='rules'&&source==='live'){const key=scopeKey(scope());presets[key]||={};presets[key][live.state.metricId]={target:live.state.target,rules:structuredClone(live.state.rules)}}
+     }
+-    changed();await flush();return display()
++    changed();await requireDurable();return display()
+   }
+   const registrations=[['CommandOrControl+Alt+Up','临时补记 +1','pending'],['CommandOrControl+Alt+Down','撤销临时补记','undoPending'],['CommandOrControl+Alt+Right','目标 +1','targetDelta',1],['CommandOrControl+Alt+Left','目标 -1','targetDelta',-1],['CommandOrControl+Alt+K','打开数值修正','focus']]
+   if(!smoke)for(const [key,label,type,value] of registrations){const registered=globalShortcut.register(key,async()=>{if(type==='focus'){const w=getWindow();w.show();w.focus();w.webContents.send('product:correction');return}try{await action(type,value)}catch(e){getWindow().webContents.send('product:error',e.message)}});shortcuts.push({key,label,registered})}
+   return {snapshot,display,overlay,query,action,flush,collectorStatus(summary){const dirty=collector.status!==summary.status||collector.mode!==summary.mode||collector.message!==summary.message;collector=summary;if(dirty)changed(false)},game(data,mode){
+     if((source==='live'&&mode!=='live')||(source==='test'&&mode!=='mock'))return
+     if(source==='live'&&(account().status!=='authenticated'||(activeChallenge()&&!sameScope(live.state.binding,scope())))){
+
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/tests/local-store.test.cjs b/tests/local-store.test.cjs
+index dab6542..447d337 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/tests/local-store.test.cjs
++++ b/tests/local-store.test.cjs
+@@ -1,10 +1,27 @@
+ const {test}=require('node:test')
+ const assert=require('node:assert/strict')
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path')
+ const {createLocalStore}=require('../electron/local-store.cjs')
++test('partial append and fsync failures preserve verified journal prefix and retry recovers latest state',async()=>{
++ for(const phase of ['write','sync']){
++  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'lit-append-retry-')),open=fs.promises.open
++  try{
++   const s=createLocalStore(dir);s.save({challenge:{target:1}});await s.flush();s.save({challenge:{target:2}});await s.flush()
++   const journal=path.join(dir,'local-store','journal.ndjson'),prefix=fs.readFileSync(journal,'utf8');let failed=false
++   fs.promises.open=async function(file,flags,...args){const h=await open.call(this,file,flags,...args);if(file===journal&&flags==='a'){
++    const write=h.writeFile.bind(h),sync=h.sync.bind(h)
++    h.writeFile=async value=>{if(phase==='write'&&!failed){failed=true;await write(value.slice(0,20));throw Error('injected partial append')}return write(value)}
++    h.sync=async()=>{if(phase==='sync'&&!failed){failed=true;throw Error('injected fsync failure')}return sync()}
++   }return h}
++   s.save({challenge:{target:3}});await s.flush();assert.equal(s.status().error.category,'write');assert.equal(fs.readFileSync(journal,'utf8'),prefix)
++   await s.flush();assert.equal(s.status().error,null);assert.equal(s.status().pending,false)
++   const restored=createLocalStore(dir);assert.equal(restored.status().error,null);assert.equal(restored.saved.challenge.target,3)
++  }finally{fs.promises.open=open;fs.rmSync(dir,{recursive:true,force:true})}
++ }
++})
+ test('checkpoint backup failure retains journal and pending state for retry without losing accepted progress',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'lit-failure-'))
+  try{
+   const s=createLocalStore(dir,{checkpointEvery:1})
+   fs.mkdirSync(path.join(dir,'local-store','checkpoint.json.bak.tmp'),{recursive:true})
+   s.save({challenge:{target:9},normalizers:{seen:['accepted']}});await s.flush()
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/tests/main-transport.test.cjs b/tests/main-transport.test.cjs
+index 42f5bf1..95c1921 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/tests/main-transport.test.cjs
++++ b/tests/main-transport.test.cjs
+@@ -1,17 +1,26 @@
+ const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path'),{EventEmitter}=require('node:events')
+ async function fixture(){
+- const handlers={},windows=[],app=new EventEmitter(),calls={flush:0,stop:0,dialogs:0};let fail=false
+- const product={display:()=>({source:'live',account:{status:'signed-out'}}),overlay:()=>({source:'live'}),query:()=>({private:true}),action(){},game(){},collectorStatus(){},async flush(){calls.flush++;return {error:fail?{category:'write'}:null}},async stop(){calls.stop++;return {error:null}}}
+- class Window extends EventEmitter{constructor(){super();this.webContents=new EventEmitter();this.webContents.setWindowOpenHandler=()=>{};this.webContents.send=()=>{};windows.push(this)}isDestroyed(){return false}async loadFile(){}show(){}focus(){}}
++ const handlers={},windows=[],app=new EventEmitter(),calls={flush:0,stop:0,dialogs:0,raw:0};let fail=false,state={source:'live',account:{status:'signed-out'}},contextChanged
++ const product={display:()=>state,overlay:()=>({source:'live'}),query:()=>({private:true}),action(){},game(){},collectorStatus(){},async flush(){calls.flush++;return {error:fail?{category:'write'}:null}},async stop(){calls.stop++;return {error:null}}}
++ class Window extends EventEmitter{constructor(){super();this.webContents=new EventEmitter();this.webContents.setWindowOpenHandler=()=>{};this.webContents.send=name=>{if(name==='collector:snapshot')calls.raw++};windows.push(this)}isDestroyed(){return false}async loadFile(){}show(){}focus(){}}
+  app.getPath=()=>'.';app.requestSingleInstanceLock=()=>true;app.whenReady=()=>Promise.resolve();app.quit=()=>{const e={preventDefault(){this.prevented=true}};app.emit('before-quit',e);if(!e.prevented)calls.quit=true}
+- const context={require:id=>id==='electron'?{app,BrowserWindow:Window,ipcMain:{handle:(n,f)=>handlers[n]=f},globalShortcut:{},session:{},safeStorage:{},dialog:{showErrorBox(){calls.dialogs++}}}:id==='./product.cjs'?{createProduct:()=>product}:id==='./collector.cjs'?{fetchGame:()=>new Promise(()=>{}),mockGame:()=>null}:require(id),process:{argv:[],env:{}},console,__dirname:path.resolve('electron'),setTimeout,clearTimeout,setInterval,clearInterval,performance}
++ let time=1000
++ const context={require:id=>id==='electron'?{app,BrowserWindow:Window,ipcMain:{handle:(n,f)=>handlers[n]=f},globalShortcut:{},session:{},safeStorage:{},dialog:{showErrorBox(){calls.dialogs++}}}:id==='./product.cjs'?{createProduct:options=>{contextChanged=options.onContextChange;return product}}:id==='./collector.cjs'?{fetchGame:async()=>({raw:true}),mockGame:()=>null}:require(id),process:{argv:[],env:{}},console,__dirname:path.resolve('electron'),setTimeout:()=>0,clearTimeout(){},setInterval,clearInterval,performance,Date:class extends Date{static now(){return time+=1000}}}
+  vm.runInNewContext(fs.readFileSync('electron/main.cjs','utf8'),context)
+  await new Promise(resolve=>setImmediate(resolve))
+- return {handlers,windows,app,calls,setFailure:value=>{fail=value}}
++ return {handlers,windows,app,calls,setFailure:value=>{fail=value},setState:value=>{state=value;contextChanged?.()},poll:context.poll}
+ }
++test('raw game subscription requires fresh opt-in after auth loss and source/context change',async()=>{
++ const f=await fixture(),sender=f.windows[0].webContents,authenticated={source:'live',account:{status:'authenticated',profile:{id:'alice'}}}
++ f.setState(authenticated);f.handlers['collector:subscribe']({sender},true);await f.poll();assert.equal(f.calls.raw,1)
++ f.setState({...authenticated,account:{...authenticated.account,status:'checking'}});await f.poll()
++ f.setState(authenticated);await f.poll();assert.equal(f.calls.raw,1)
++ f.handlers['collector:subscribe']({sender},true);await f.poll();assert.equal(f.calls.raw,2)
++ f.setState({source:'test',account:{status:'preview'}});await f.poll();assert.equal(f.calls.raw,2)
++})
+ test('main-only queries reject foreign/overlay senders and unauthenticated raw game reads expose no data',async()=>{
+  const f=await fixture(),sender=f.windows[0].webContents
+  assert.throws(()=>f.handlers['product:query']({sender:{}},'history'))
+  for(const type of ['challengeLog','diagnostics'])assert.throws(()=>f.handlers['product:query']({sender:{}},type))
+  assert.throws(()=>f.handlers['collector:get']({sender:{}}))
+  assert.equal(f.handlers['product:query']({sender},'history').private,true)
+diff --git a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/tests/product-persistence.test.cjs b/tests/product-persistence.test.cjs
+index 5441e70..a588bcf 100644
+--- a/C:/Users/chinb/.codex/visualizations/2026/09/28/01a0e6af-33f4-7120-862f-3b524c0dc229/performance-task2-review-base/tests/product-persistence.test.cjs
++++ b/tests/product-persistence.test.cjs
+@@ -82,12 +82,42 @@ test('diagnostics expose only bounded safe metadata for selected authenticated s
+   await p.action('confirmRoom','456');assert.deepEqual((await p.query('diagnostics')).items,[])
+   run.handles.douyin.setDiagnostics([{method:'https://private.test/?cookie=secret',stage:'raw secret',code:'secret',timestamp:'secret',payloadSize:-1}])
+   assert.deepEqual((await p.query('diagnostics')).items[0],{method:'unknown',stage:'unknown',code:'UNKNOWN',timestamp:0,payloadSize:0})
+   await p.action('source','test');assert.deepEqual((await p.query('diagnostics')).items,[])
+  }finally{await p.stop();fs.rmSync(dir,{recursive:true,force:true})}
+ })
++test('failed durable actions reject and do not logout or change source/platform; retry preserves in-memory progress',async()=>{
++ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'lit-action-fail-')),run=environment(dir),p=run.product,open=fs.promises.open
++ try{
++  await ready(p);await p.action('configureChallenge',{metricId:'champion-kills',target:10,rules});await p.action('start')
++  fs.promises.open=async function(file,flags,...args){if(String(file).startsWith(dir)&&flags==='a')throw Error('injected disk failure');return open.call(this,file,flags,...args)}
++  await assert.rejects(p.action('completed',4),/保存/);assert.equal(p.display().completed,4)
++  await assert.rejects(p.action('logout'),/保存/);assert.equal(p.display().account.status,'authenticated')
++  await assert.rejects(p.action('source','test'),/保存/);assert.equal(p.display().source,'live')
++  await assert.rejects(p.action('selectPlatform','other'),/保存/);assert.equal(p.display().platform.id,'douyin')
++  fs.promises.open=open;await p.flush();assert.equal(createLocalStore(dir).saved.challenge.auto+createLocalStore(dir).saved.challenge.adjustment,4)
++ }finally{fs.promises.open=open;await p.stop();fs.rmSync(dir,{recursive:true,force:true})}
++})
++test('unreadable legacy state reports recovery error from flush and rejects action success',async()=>{
++ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'lit-readfail-action-'));fs.writeFileSync(path.join(dir,'challenge-v1.json'),'{broken')
++ const {product:p}=environment(dir)
++ try{assert.equal((await p.flush()).error.category,'recovery');await assert.rejects(p.action('selectPlatform','douyin'),/恢复|读取/);assert.equal((await p.stop()).error.category,'recovery')}
++ finally{await p.stop();fs.rmSync(dir,{recursive:true,force:true})}
++})
++test('feed cannot cross authenticated platforms with identical account IDs before room confirmation',async()=>{
++ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'lit-feed-owner-')),run=environment(dir),p=run.product
++ try{
++  await ready(p);run.handles.douyin.event({id:'private-message',type:'comment',text:'alice douyin',userId:'u'})
++  assert.equal((await p.query('feed')).messages.length,1)
++  run.handles.other.account('alice');await p.action('selectPlatform','other');assert.deepEqual((await p.query('feed')).messages,[])
++  await p.action('confirmRoom','123');run.handles.other.event({id:'other-message',type:'comment',text:'alice other',userId:'u'})
++  run.handles.other.authState('checking');assert.deepEqual((await p.query('feed')).messages,[])
++  run.handles.other.authState('authenticated');assert.equal((await p.query('feed')).messages[0].text,'alice other')
++  await p.action('selectPlatform','douyin');assert.deepEqual((await p.query('feed')).messages,[])
++ }finally{await p.stop();fs.rmSync(dir,{recursive:true,force:true})}
++})
+ function environment(directory) {
+   const handles = {}
+   const adapterFactories = Object.fromEntries(['douyin', 'other'].map(id => [id, ({ onState, onEvent }) => {
+     let account = { status: 'signed-out', profile: null }
+     let normalizer = createNormalizer()
+     let diagnostics=[]
+@@ -222,26 +252,26 @@ test('malformed primary recovers from backup; malformed primary and backup remai
+     const managed=path.join(dir,'local-store')
+     fs.rmSync(managed,{recursive:true,force:true})
+     fs.writeFileSync(primary, '{still broken')
+     fs.writeFileSync(primary + '.bak', '{also broken')
+     run = environment(dir)
+     assert.match(run.product.snapshot().persistenceError, /读取|损坏|恢复/)
+-    await run.product.action('selectPlatform', 'douyin')
++    await assert.rejects(run.product.action('selectPlatform', 'douyin'), /恢复/)
+     assert.equal(fs.readFileSync(primary, 'utf8'), '{still broken')
+     assert.equal(fs.readFileSync(primary + '.bak', 'utf8'), '{also broken')
+   } finally { await run.product.stop(); fs.rmSync(dir, { recursive: true, force: true }) }
+ })
+ 
+ test('unknown valid JSON save is preserved and reports a read error instead of being replaced', async () => {
+   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'challenge-unknown-'))
+   const primary = path.join(dir, 'challenge-v1.json')
+   fs.writeFileSync(primary, JSON.stringify({ unrelated: 'unknown user data' }))
+   const { product: p } = environment(dir)
+   try {
+     assert.match(p.snapshot().persistenceError, /读取|损坏|恢复/)
+-    await p.action('selectPlatform', 'douyin')
++    await assert.rejects(p.action('selectPlatform', 'douyin'), /恢复/)
+     await p.flush()
+     assert.equal(fs.readFileSync(primary, 'utf8'), '{"unrelated":"unknown user data"}')
+   } finally { await p.stop(); fs.rmSync(dir, { recursive: true, force: true }) }
+ })
+ 
+ test('malformed structured draft is preserved instead of being silently discarded', async () => {
+@@ -249,13 +279,13 @@ test('malformed structured draft is preserved instead of being silently discarde
+   const primary = path.join(dir, 'challenge-v1.json')
+   const contents = JSON.stringify({ challenge: null, library: { drafts: [null], history: [] } })
+   fs.writeFileSync(primary, contents)
+   const { product: p } = environment(dir)
+   try {
+     assert.match(p.snapshot().persistenceError, /读取|损坏|恢复/)
+-    await p.action('selectPlatform', 'douyin')
++    await assert.rejects(p.action('selectPlatform', 'douyin'), /恢复/)
+     assert.equal(fs.readFileSync(primary, 'utf8'), contents)
+   } finally { await p.stop(); fs.rmSync(dir, { recursive: true, force: true }) }
+ })
+ 
+ test('malformed saved rules are rejected before events can access them', async () => {
+   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'challenge-bad-rules-'))
+@@ -290,22 +320,21 @@ test('backup recovers the latest accepted challenge progress after primary corru
+     await run.product.action('resumeChallenge', 'champion-kills')
+     assert.equal(run.product.snapshot().completed, 6)
+     assert.equal(fs.readFileSync(primary, 'utf8'), '{corrupted')
+   } finally { await run.product.stop(); await first.stop(); fs.rmSync(dir, { recursive: true, force: true }) }
+ })
+ 
+-test('write failure is visible and leaves the accepted challenge available in memory', async () => {
++test('write failure is visible and setup rejects without touching an occupied storage path', async () => {
+   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'challenge-write-error-'))
+   const nonDirectory = path.join(dir, 'occupied')
+   fs.writeFileSync(nonDirectory, 'file')
+   const { product: p } = environment(nonDirectory)
+   try {
+-    await ready(p)
+-    await p.action('configureChallenge', { metricId: 'champion-kills', target: 10, rules })
++    await assert.rejects(ready(p), /保存失败/)
+     assert.equal(p.display().storage.error.category, 'write')
+-    assert.equal(p.snapshot().target, 10)
++    assert.equal(p.snapshot().configured, false)
+     assert.equal(fs.readFileSync(nonDirectory, 'utf8'), 'file')
+   } finally { await p.stop(); fs.rmSync(dir, { recursive: true, force: true }) }
+ })
+ 
+ test('demo challenge and history never enter live persisted file', async () => {
+   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'challenge-demo-'))
+
+

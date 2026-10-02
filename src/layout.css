@@ -1,0 +1,56 @@
+/* The desktop app owns one viewport. Each tab owns its scroll area. */
+html,body,#root{height:100%;overflow:hidden}
+.app-shell{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+.app-header{height:68px;flex:0 0 auto}
+.workspace{width:100%;flex:1;min-height:0;display:flex;flex-direction:column;padding-top:18px}
+.navigation-row{flex:0 0 auto;margin-bottom:14px}
+.main-tabs button{padding-block:10px}
+.demo-banner{flex:0 0 auto;margin-bottom:12px}
+.notice{flex:0 0 auto;max-height:70px;overflow:auto}
+.workspace>[role=tabpanel]{flex:1;min-height:0}
+.workspace>[role=tabpanel][hidden]{display:none!important}
+#panel-game{overflow-y:auto;overflow-x:hidden;padding-right:4px;scrollbar-gutter:stable;overscroll-behavior:contain}
+#panel-messages{display:flex;flex-direction:column;overflow:hidden}
+#panel-game>.page-intro,#panel-messages .page-intro{flex:0 0 auto;margin:10px 0 16px}
+#panel-game>.page-intro h1,#panel-messages .page-intro h1{font-size:23px}
+.messages-surface{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.feed-stats{flex:0 0 auto;padding:12px 18px}
+.feed-toolbar{flex:0 0 auto;padding:10px 20px 8px}
+.feed-subbar{flex:0 0 auto;padding:0 22px 9px}
+.feed-footer{flex:0 0 auto;padding:8px 22px}
+.message-scroll{flex:1;min-height:0;height:auto;max-height:none;overflow-y:auto;overflow-x:hidden}
+.messages-surface .message-scroll{overflow-anchor:none}
+#panel-messages .simulation-bar{flex:0 0 auto;margin-top:10px;padding:9px 16px}
+.app-footer{flex:0 0 auto;padding:10px 2px}
+.connection-diagnostics{display:grid;gap:6px;color:var(--muted);font-size:12px}
+.auth-section{border-top:1px dashed var(--line);margin-top:20px;padding-top:20px}
+.auth-section .section-top{margin-bottom:10px}.auth-status{font-size:11px;color:#89788e}
+.auth-status.good{color:var(--mint)}.auth-message{font-size:12px;color:#786584;margin:13px 0}
+.auth-section>.muted{margin-bottom:15px}.cookie-import{border:1px solid var(--line);border-radius:12px;padding:13px;margin-top:15px}
+.cookie-import summary{cursor:pointer;font-size:13px;color:#88649f}.cookie-import[open] summary{margin-bottom:15px}
+.cookie-import .form-label{margin-top:12px}.cookie-import .muted:last-child{margin:13px 0 0}
+.auth-feedback{color:#466d5f;background:#edf7f1;border-radius:9px;padding:11px;margin-top:13px}
+@media(max-height:800px) and (min-width:701px){
+  .app-header{height:56px}.app-logo{width:36px;height:36px;border-radius:12px}
+  .workspace{padding-top:10px}.navigation-row{margin-bottom:8px}
+  .main-tabs button{padding-block:7px}.demo-banner{padding:6px 11px;margin-bottom:8px}
+  #panel-game>.page-intro,#panel-messages .page-intro{margin:4px 0 10px}#panel-game>.page-intro h1,#panel-messages .page-intro h1{font-size:20px;margin:0}
+  #panel-messages .page-intro p{display:none}
+  .feed-stats{padding:7px 13px}.feed-stat{padding:5px 8px}.feed-stat strong{font-size:21px}.feed-stat span:not(.icon-tile){font-size:10px}
+  .feed-toolbar{padding:7px 16px 5px}.filter-tabs button{padding:6px 10px}.search-input input{padding-block:7px}
+  .feed-subbar{padding:0 18px 5px;font-size:10px}.feed-footer{padding:5px 18px;font-size:10px}
+  #panel-messages .simulation-bar{margin-top:6px;padding:6px 12px}.simulation-bar button{padding:5px 9px}
+  .app-footer{padding:6px 2px}
+}
+/* Very small browser previews use one document scrollbar instead of nested ones. */
+@media(max-width:700px),(max-height:560px){
+  html,body,#root{height:auto;min-height:100%;overflow:visible}
+  .app-shell{height:auto;min-height:100dvh;overflow:visible}
+  .workspace{flex:none;min-height:auto}
+  .workspace>[role=tabpanel],#panel-game,#panel-messages{flex:none;min-height:auto;overflow:visible;scrollbar-gutter:auto;padding-right:0}
+  .messages-surface{flex:none;min-height:auto;overflow:hidden}
+  .message-scroll{flex:none;height:auto;min-height:0;max-height:none;overflow:visible;scrollbar-gutter:auto}
+  .feed-empty{min-height:220px}.feed-subbar{flex-wrap:wrap;gap:8px}
+  .feed-toolbar{padding-inline:12px}.feed-subbar,.feed-footer{padding-inline:14px}
+  .feed-stats{padding-inline:8px}.app-footer{padding-block:15px}
+}

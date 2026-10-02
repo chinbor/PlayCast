@@ -1,0 +1,30 @@
+export default function Icon({ name, size = 20, ...props }) {
+  const paths = {
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/></>,
+    unlock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2m-3.5 9v3"/></>,
+    user: <><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></>,
+    game: <><path d="M6 7h12a3 3 0 0 1 3 2.6l1 7a2.5 2.5 0 0 1-4.2 2.2L15 16H9l-2.8 2.8A2.5 2.5 0 0 1 2 16.6l1-7A3 3 0 0 1 6 7Z"/><path d="M7 10v5m-2.5-2.5h5"/><circle cx="16" cy="11" r=".7"/><circle cx="18.5" cy="14" r=".7"/></>,
+    chat: <><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5A8.5 8.5 0 0 1 10.5 3h2a8.5 8.5 0 0 1 8.5 8.5Z"/><path d="M7 10h9m-9 4h5"/></>,
+    heart: <path d="m12 21-8.5-8.3A5.6 5.6 0 0 1 12 5.5a5.6 5.6 0 0 1 8.5 7.2Z"/>,
+    gift: <><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13"/><path d="M12 8C4 8 5 2 8 3c3 0 4 5 4 5Zm0 0c8 0 7-6 4-5-3 0-4 5-4 5Z"/></>,
+    follow: <><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a7 7 0 0 1 12-5m4-5v8m-4-4h8"/></>,
+    enter: <><path d="M13 3h6v18h-6M2 12h13m-4-4 4 4-4 4"/></>,
+    people: <><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a7 7 0 0 1 14 0v2M17 4a4 4 0 0 1 0 8m3 9v-2a6 6 0 0 0-2-4"/></>,
+    trophy: <><path d="M7 3h10v6a5 5 0 0 1-10 0ZM7 5H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4M12 14v5m-5 2h10m-8-2h6"/></>,
+    settings: <><path d="m10 2-1 3-3 1-3-1-1 4 2 2v3l-2 2 2 4 3-1 3 1 1 2 4-1 1-3 3-1 2 1 1-4-2-2v-3l2-2-2-4-3 1-3-1-1-2Z"/><circle cx="12" cy="12" r="3"/></>,
+    play: <path d="m8 4 13 8-13 8Z"/>,
+    pause: <><path d="M8 4v16M16 4v16"/></>,
+    stop: <rect x="5" y="5" width="14" height="14" rx="2"/>,
+    arrow: <path d="M4 12h16m-6-6 6 6-6 6"/>,
+    down: <path d="m6 9 6 6 6-6"/>,
+    edit: <><path d="m15 4 5 5M4 20l1-6L16 3l5 5-11 11Z"/></>,
+    close: <path d="m6 6 12 12M6 18 18 6"/>,
+    clear: <><path d="m14 3 7 7-9 9H5l-3-3L14 3Zm-7 8 7 7M12 21h10"/></>,
+    search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
+    spark: <><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></>,
+    screen: <><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></>,
+    reset: <><path d="M3 11a9 9 0 1 1 2 7M3 4v7h7"/></>,
+    check: <path d="m4 12 5 5L20 6"/>,
+  }
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{paths[name] || paths.spark}</svg>
+}

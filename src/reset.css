@@ -1,0 +1,7 @@
+.storage-reset{margin-top:28px;padding-top:22px;border-top:1px solid #edd7d4}
+.storage-reset h3{color:#a44943}.storage-reset p{font-size:12px;line-height:1.8;overflow-wrap:anywhere}
+.storage-reset .reset-confirmation{margin-top:16px;padding:16px 18px;border:1px solid #e2b6b0;border-radius:12px;background:#fff7f5}
+.reset-confirmation ul{padding-left:20px;font-size:12px;line-height:1.9;color:#755957}
+.reset-confirmation .form-label{margin:16px 0;max-width:260px}.reset-confirmation .button-row{margin-top:16px}
+.reset-screen{height:100dvh;overflow:auto;display:grid;place-items:center;padding:32px;background:#faf7f4;color:#433b49}
+.reset-screen section{width:min(100%,540px);text-align:center}.reset-screen .icon-tile{margin:0 auto 20px}.reset-screen h1{font-size:24px}.reset-screen p{font-size:14px;line-height:1.8;overflow-wrap:anywhere}.reset-screen button{margin-top:14px}
