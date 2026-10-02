@@ -27,6 +27,14 @@ jobs:
       - run: npm run release:check
       - run: npm run dist:win
       - run: npm run smoke
+      - name: Verify system tray lifecycle
+        run: npm run smoke
+        env:
+          LIT_SMOKE_CASE: tray
+      - name: Verify main editor quit protection
+        run: npm run smoke
+        env:
+          LIT_SMOKE_CASE: feature-main-quit
       - run: npm run verify:package
       - run: npm run report:package -- release/package-report.json
       - name: Create installer checksums

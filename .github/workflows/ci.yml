@@ -29,6 +29,14 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run smoke
+      - name: Verify system tray lifecycle
+        run: npm run smoke
+        env:
+          LIT_SMOKE_CASE: tray
+      - name: Verify main editor quit protection
+        run: npm run smoke
+        env:
+          LIT_SMOKE_CASE: feature-main-quit
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

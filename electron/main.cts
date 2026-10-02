@@ -1,8 +1,9 @@
-import {app,BrowserWindow,ipcMain,globalShortcut,session,safeStorage,dialog,screen,nativeTheme} from 'electron';
+import {app,BrowserWindow,ipcMain,globalShortcut,session,safeStorage,dialog,screen,nativeTheme,Tray,Menu} from 'electron';
 import path from 'node:path';
 import {fetchGame,mockGame} from './collector.cjs';
 import {createProduct} from './product.cjs';
 import {createDisplayWindows} from './display-windows.cjs';
+import {createApplicationTray} from './application-tray.cjs';
 import {isObject} from './json-boundary.cjs';
 import {projectDisplayFeed} from './message-display.cjs';
 import {createApplicationReset} from './application-reset.cjs';
@@ -48,6 +49,7 @@ if(!smoke&&!liveProbe&&!app.requestSingleInstanceLock()){app.quit()}
 const GAME_POLL_MS=1000,GAME_WAIT_MS=3000
 let main:BrowserWindow,displays:ReturnType<typeof createDisplayWindows>,product:Product,appearance:ReturnType<typeof createMainAppearance>,timer:ReturnType<typeof setTimeout>|undefined,generation=0,mode:'live'|'mock'='live',mockStarted=Date.now(),lastSnapshot:CollectorState={status:'waiting',mode:'live',intervalMs:GAME_WAIT_MS}
 let gameSubscribed=false,lastGameSent=0,quitting=false,shutdown:Promise<void>|null|undefined
+let tray:ReturnType<typeof createApplicationTray>|undefined
 let resetState:ResetState={active:false,error:''},resetTask:Promise<ProductState>|null=null
 function switchMode(next:'live'|'mock'){clearTimeout(timer);generation++;mode=next;mockStarted=Date.now();poll()}
 async function poll(){
@@ -72,12 +74,23 @@ async function load(w:BrowserWindow,hash=''){
 }
 const openOverlay=(bounds?:Partial<Rectangle>)=>displays.open('challenge',bounds)
 const updateOverlay=(settings:OverlaySettings,previous:OverlaySettings,permit?:ClosePermit|false|null)=>displays.update('challenge',settings,previous,permit)
-app.on('second-instance',()=>{main?.show();main?.focus()})
+function showMain(){if(quitting||!main||main.isDestroyed())return;if(tray?.showMain())return;if(main.isMinimized())main.restore();main.show();main.focus()}
+app.on('second-instance',showMain)
+app.on('activate',showMain)
+app.on('will-quit',()=>tray?.dispose())
 app.whenReady().then(async()=>{
   appearance=createMainAppearance({directory:app.getPath('userData'),nativeTheme,onChange:value=>{if(main&&!main.isDestroyed()){main.setBackgroundColor(value.resolved==='dark'?'#19191c':'#faf8f5');main.webContents.send('appearance:changed',value)}}})
   uiSession=session.fromPartition('live-interaction-ui',{cache:false})
   if(smoke)await require('../tests/fixtures/account-response.cjs').installAvatarFixture(uiSession)
   main=new BrowserWindow({width:1360,height:920,minWidth:960,minHeight:700,show:!smoke&&!liveProbe,title:APP_TITLE,icon:APP_ICON,autoHideMenuBar:true,backgroundColor:appearance.snapshot().resolved==='dark'?'#19191c':'#faf8f5',webPreferences:{...preferences(),additionalArguments:['--playcast-main-window']}})
+  try{
+    tray=createApplicationTray({Tray,Menu,icon:APP_ICON,title:APP_TITLE,getMainWindow:()=>main,isQuitting:()=>quitting,
+      canOpenDisplay:kind=>!resetState.active&&!shutdown&&!!product&&(kind==='challenge'?product.overlay().visible:product.messageOverlay().visible),
+      openDisplay:async kind=>{if(resetState.active||shutdown)throw Error('应用正在重置或关闭');await product.action(kind==='challenge'?'overlay':'messageOverlay')},
+      requestQuit:()=>app.quit(),onError:error=>dialog.showErrorBox('无法打开弹窗',error instanceof Error?error.message:'请检查登录、直播间和玩法状态后重试。')})
+  }catch{console.error('系统托盘初始化失败，关闭主窗口将退出应用。')}
+  main.on('close',event=>{if(!quitting){if(shutdown){event.preventDefault();showMain();return}if(tray?.hideOnClose(event))return;event.preventDefault();app.quit()}})
+  main.on('closed',()=>{generation++;clearTimeout(timer);gameSubscribed=false;app.quit()})
   const capabilitySmoke=smoke&&process.env.LIT_SMOKE_CASE==='capabilities'
   const smokeAdapters:AdapterFactories|undefined=capabilitySmoke?{'comment-only':require('../tests/fixtures/comment-platform.cjs')}:smoke?{douyin:require('../tests/fixtures/smoke-platform.cjs')({BrowserWindow,session})}:undefined
   displays=createDisplayWindows({BrowserWindow,screen,load,mainWindow:main,settings:kind=>kind==='challenge'?product.display().overlaySettings:product.display().messageOverlaySettings,getContextVersion:()=>product?.display().contextVersion??0,webPreferences:()=>({...preferences(),backgroundThrottling:true}),onChange:()=>product?.publishDisplays?.()})
@@ -237,9 +250,7 @@ app.whenReady().then(async()=>{
   main.webContents.on('did-start-loading',()=>{gameSubscribed=false})
   main.webContents.on('destroyed',()=>{gameSubscribed=false})
   await load(main);poll()
-  main.on('close',event=>{if(!quitting){event.preventDefault();app.quit()}})
-  main.on('closed',()=>{generation++;clearTimeout(timer);gameSubscribed=false;app.quit()})
-  if(smoke){try{await require(capabilitySmoke?'../tests/capability-smoke.cjs':'../tests/guided-smoke.cjs')({main,product,getProduct:()=>product,app,openOverlay,getOverlay:()=>displays.get('challenge'),deliverRawSnapshot:(data:GameData)=>{const visible=product.display();if(gameSubscribed&&main.isVisible?.()!==false&&!main.isMinimized?.()&&(visible.source==='test'||visible.account.status==='authenticated')){main.webContents.send('collector:snapshot',{status:'connected',mode:'live',data,updatedAt:Date.now(),requestMs:0,intervalMs:GAME_POLL_MS,contextVersion:visible.contextVersion});return true}return false}});app.quit()}catch(e){console.error(e);app.exit(1)}}
+  if(smoke){try{await require(capabilitySmoke?'../tests/capability-smoke.cjs':process.env.LIT_SMOKE_CASE==='tray'?'../tests/system-tray-smoke.cjs':'../tests/guided-smoke.cjs')({main,tray,product,getProduct:()=>product,app,openOverlay,getOverlay:()=>displays.get('challenge'),deliverRawSnapshot:(data:GameData)=>{const visible=product.display();if(gameSubscribed&&main.isVisible?.()!==false&&!main.isMinimized?.()&&(visible.source==='test'||visible.account.status==='authenticated')){main.webContents.send('collector:snapshot',{status:'connected',mode:'live',data,updatedAt:Date.now(),requestMs:0,intervalMs:GAME_POLL_MS,contextVersion:visible.contextVersion});return true}return false}});app.quit()}catch(e){console.error(e);app.exit(1)}}
   if(liveProbe){product.action('connect',liveProbe.split('=')[1]);const start=Date.now();const t=setInterval(()=>{const s=product.snapshot().douyin;console.log(JSON.stringify({status:s.status,message:s.message,received:s.received,decoded:s.decoded}));if((s.decoded??0)>0||s.status==='error'||Date.now()-start>50000){clearInterval(t);product.stop();app.exit((s.decoded??0)>0?0:2)}},5000)}
 }).catch(e=>{console.error(e);app.exit(1)})
 app.on('before-quit',event=>{
@@ -253,17 +264,17 @@ app.on('before-quit',event=>{
     for(const kind of ['main','challenge-settings','messages-settings','challenge','messages'] as const){const permit=await displays?.prepareClose(kind);if(permit===false)return;if(permit)permits.push(permit)}
     const result=await product?.flush()
     await appearance?.flush()
-    if(result?.error){dialog.showErrorBox('保存未完成','本次更改未全部写入磁盘，窗口将保持打开。请检查本地存储错误后重试。');shutdown=null;return}
+    if(result?.error){showMain();dialog.showErrorBox('保存未完成','本次更改未全部写入磁盘，窗口将保持打开。请检查本地存储错误后重试。');shutdown=null;return}
     if(!canDispose())return
     const stopped=await product?.stop({canDispose})
     if(stopped&&'canceled' in stopped&&stopped.canceled)return
-    if(stopped?.error){dialog.showErrorBox('保存未完成','窗口将保持打开，请检查本地存储错误后重试。');shutdown=null;return}
+    if(stopped?.error){showMain();dialog.showErrorBox('保存未完成','窗口将保持打开，请检查本地存储错误后重试。');shutdown=null;return}
     generation++;clearTimeout(timer)
     for(const permit of permits)if(permit.kind!=='main')await displays.closePrepared(permit)
     quitting=true
     app.quit()
     }finally{for(const permit of permits)displays.releaseClose(permit);if(!quitting)shutdown=null}
-  })().catch(()=>{quitting=false;dialog.showErrorBox('保存未完成','窗口将保持打开，请检查本地存储错误后重试。');shutdown=null})
+  })().catch(()=>{quitting=false;showMain();dialog.showErrorBox('保存未完成','窗口将保持打开，请检查本地存储错误后重试。');shutdown=null})
 })
 app.on('window-all-closed',()=>app.quit())
 // Development restarts follow the normal close/flush path, including dirty-editor consent.

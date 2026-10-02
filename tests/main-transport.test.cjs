@@ -84,7 +84,7 @@ test('PlayCast branding reaches native window titles and bundled icons without r
   for(const size of [16,20,24,32,48,64,128,256])assert.ok(sizes.includes(size),'Small and high-DPI icon representation: '+size)
  }
 })
-test('main native close requires bounded owner consent with no popups and rejects popup/frame/stale decisions',async()=>{
+test('explicit quit requires bounded main owner consent with no popups and rejects popup/frame/stale decisions',async()=>{
  const f=await fixture(),w=f.windows[0],event={sender:w.webContents,senderFrame:w.webContents.mainFrame},sent=[],tick=()=>new Promise(r=>setImmediate(r))
  assert.equal(typeof f.handlers['main:close-guard'],'function')
  w.webContents.send=(channel,value)=>sent.push({channel,value})
@@ -156,23 +156,25 @@ test('a slow game request schedules its successor only after completion without 
  await f.runNextPoll()
  assert.deepEqual(f.calls.fetchTimes,[0,1400])
 })
-async function fixture({smoke=false,fetchDuration=120}={}){
+async function fixture({smoke=false,fetchDuration=120,failTray=false}={}){
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'lit-main-transport-'));directories.push(directory)
- const handlers={},syncHandlers={},nativeTheme=new EventEmitter(),windows=[],app=new EventEmitter(),calls={flush:0,stop:0,dialogs:0,raw:0,contexts:[],popupContexts:[],partitions:[],avatarSession:null,collector:[],fetchTimes:[]};let fail=false,state={source:'live',contextVersion:0,room:'123',account:{status:'signed-out'}},contextChanged,productOptions
+ const handlers={},syncHandlers={},nativeTheme=new EventEmitter(),trays=[],windows=[],app=new EventEmitter(),calls={flush:0,stop:0,dialogs:0,raw:0,contexts:[],popupContexts:[],partitions:[],avatarSession:null,collector:[],fetchTimes:[]};let fail=false,state={source:'live',contextVersion:0,room:'123',account:{status:'signed-out'}},contextChanged,productOptions
  let clock=0,fetchError=null;const timers=[]
  const uiSession={protocol:{}},authSession={clearStorageData(){calls.authClears=(calls.authClears||0)+1}},defaultSession={clearStorageData(){calls.defaultClears=(calls.defaultClears||0)+1}}
  const electronSession={defaultSession,fromPartition(name,options){calls.partitions.push({name,options});return name==='live-interaction-ui'?uiSession:authSession}}
  const product={display:()=>state,overlay:()=>({source:'live'}),messageOverlay:()=>({displayKind:'messages',visible:true,contextVersion:state.contextVersion}),messageScopeKey:()=>JSON.stringify([state.source,state.room]),publishDisplays(){},query:()=>({private:true}),action(type){calls.action=type},game(){},collectorStatus(value){calls.collector.push(value)},async flush(){calls.flush++;return {error:fail?{category:'write'}:null}},async stop(){calls.stop++;return {error:null}}}
- class Window extends EventEmitter{constructor(options={}){super();this.options=options;this.webContents=new EventEmitter();this.webContents.mainFrame={};this.webContents.setWindowOpenHandler=()=>{};this.webContents.send=(name,value)=>{if(name==='collector:snapshot')calls.raw++;if(name==='product:context')(windows.indexOf(this)===0?calls.contexts:calls.popupContexts).push({window:windows.indexOf(this),version:value})};windows.push(this)}isDestroyed(){return !!this.dead}async loadFile(){}show(){}focus(){}getSize(){return [320,480]}getContentSize(){return [320,480]}setMinimumSize(){}setIgnoreMouseEvents(){}setMovable(){}setResizable(){}setAlwaysOnTop(){}setContentSize(){}getBounds(){return {x:0,y:0,width:320,height:480}}getContentBounds(){return this.getBounds()}close(){const e={preventDefault(){this.prevented=true}};this.emit('close',e);if(e.prevented)return;this.dead=true;this.emit('closed')}}
+ class Window extends EventEmitter{constructor(options={}){super();this.options=options;this.webContents=new EventEmitter();this.webContents.mainFrame={};this.webContents.setWindowOpenHandler=()=>{};this.webContents.send=(name,value)=>{if(name==='collector:snapshot')calls.raw++;if(name==='product:context')(windows.indexOf(this)===0?calls.contexts:calls.popupContexts).push({window:windows.indexOf(this),version:value})};windows.push(this)}isDestroyed(){return !!this.dead}async loadFile(){}isVisible(){return this.visible!==false}isMinimized(){return !!this.minimized}hide(){this.visible=false;this.emit('hide')}show(){this.visible=true;this.emit('show')}restore(){this.minimized=false;this.emit('restore')}focus(){this.focused=(this.focused||0)+1}getSize(){return [320,480]}getContentSize(){return [320,480]}setMinimumSize(){}setIgnoreMouseEvents(){}setMovable(){}setResizable(){}setAlwaysOnTop(){}setContentSize(){}getBounds(){return {x:0,y:0,width:320,height:480}}getContentBounds(){return this.getBounds()}close(){const e={preventDefault(){this.prevented=true}};this.emit('close',e);if(e.prevented)return;this.dead=true;this.emit('closed')}}
+ class Tray extends EventEmitter{constructor(icon){super();if(failTray)throw Error('Tray unavailable');this.icon=icon;trays.push(this)}setToolTip(value){this.tooltip=value}isDestroyed(){return !!this.dead}destroy(){this.dead=true}popUpContextMenu(menu){this.menu=menu}}
+ const Menu={buildFromTemplate:items=>({items})}
  Window.prototype.moveTop=function(){}
  Window.prototype.setBackgroundColor=function(color){this.background=color}
- app.getPath=()=>directory;app.setPath=()=>{};app.setName=name=>{app.name=name};app.requestSingleInstanceLock=()=>true;app.whenReady=()=>Promise.resolve();app.quit=()=>{const e={preventDefault(){this.prevented=true}};app.emit('before-quit',e);if(!e.prevented)calls.quit=true}
+ app.getPath=()=>directory;app.setPath=()=>{};app.setName=name=>{app.name=name};app.requestSingleInstanceLock=()=>true;app.whenReady=()=>Promise.resolve();app.quit=()=>{const e={preventDefault(){this.prevented=true}};app.emit('before-quit',e);if(!e.prevented){calls.quit=true;app.emit('will-quit')}}
  let time=1000
- const context={require:id=>id==='electron'?{app,BrowserWindow:Window,nativeTheme,ipcMain:{handle:(n,f)=>handlers[n]=f,on:(n,f)=>syncHandlers[n]=f},globalShortcut:{},screen:{getCursorScreenPoint:()=>({x:0,y:0})},session:electronSession,safeStorage:{},dialog:{showErrorBox(){calls.dialogs++}}}:id==='./product.cjs'?{createProduct:options=>{productOptions=options;contextChanged=options.onContextChange;return product}}:id==='./collector.cjs'?{fetchGame:async()=>{calls.fetchTimes.push(clock);clock+=fetchDuration;if(fetchError)throw fetchError;return {raw:true}},mockGame:()=>null}:id==='../tests/fixtures/account-response.cjs'?{installAvatarFixture:async ses=>{calls.avatarSession=ses}}:id==='../tests/guided-smoke.cjs'?async()=>{}:id.startsWith('./')?require(path.resolve('electron',id)):require(id),process:{argv:smoke?['--smoke']:[],env:{},pid:1234},console,__dirname:path.resolve('electron'),setTimeout:(callback,delay)=>{const timer={callback,delay,unref(){}};timers.push(timer);return timer},clearTimeout(timer){if(timer)timer.canceled=true},setInterval,clearInterval,performance:{now:()=>clock},Date:class extends Date{static now(){return time+=1000}}}
+ const context={require:id=>id==='electron'?{app,BrowserWindow:Window,Tray,Menu,nativeTheme,ipcMain:{handle:(n,f)=>handlers[n]=f,on:(n,f)=>syncHandlers[n]=f},globalShortcut:{},screen:{getCursorScreenPoint:()=>({x:0,y:0})},session:electronSession,safeStorage:{},dialog:{showErrorBox(){calls.dialogs++}}}:id==='./product.cjs'?{createProduct:options=>{productOptions=options;contextChanged=options.onContextChange;return product}}:id==='./collector.cjs'?{fetchGame:async()=>{calls.fetchTimes.push(clock);clock+=fetchDuration;if(fetchError)throw fetchError;return {raw:true}},mockGame:()=>null}:id==='../tests/fixtures/account-response.cjs'?{installAvatarFixture:async ses=>{calls.avatarSession=ses}}:id==='../tests/guided-smoke.cjs'?async()=>{}:id.startsWith('./')?require(path.resolve('electron',id)):require(id),process:{argv:smoke?['--smoke']:[],env:{},pid:1234},console,__dirname:path.resolve('electron'),setTimeout:(callback,delay)=>{const timer={callback,delay,unref(){}};timers.push(timer);return timer},clearTimeout(timer){if(timer)timer.canceled=true},setInterval,clearInterval,performance:{now:()=>clock},Date:class extends Date{static now(){return time+=1000}}}
  vm.runInNewContext(fs.readFileSync('electron/main.cjs','utf8'),context)
  await new Promise(resolve=>setImmediate(resolve))
  const nextPoll=()=>timers.findLast(timer=>timer.callback===context.poll&&!timer.canceled)
- return {handlers,syncHandlers,nativeTheme,windows,app,calls,product,uiSession,authSession,defaultSession,nextPoll,setFetchError:value=>{fetchError=value},async runNextPoll(){const timer=nextPoll();timer.canceled=true;clock+=timer.delay;await timer.callback()},options:()=>productOptions,setFailure:value=>{fail=value},setState:(value,metadata)=>{state={...value,contextVersion:state.contextVersion+1};contextChanged?.(state.contextVersion,metadata);return state.contextVersion},setRoomSameVersion:room=>{state={...state,room}},poll:context.poll}
+ return {handlers,syncHandlers,nativeTheme,trays,windows,app,calls,product,uiSession,authSession,defaultSession,nextPoll,setFetchError:value=>{fetchError=value},async runNextPoll(){const timer=nextPoll();timer.canceled=true;clock+=timer.delay;await timer.callback()},options:()=>productOptions,setFailure:value=>{fail=value},setState:(value,metadata)=>{state={...value,contextVersion:state.contextVersion+1};contextChanged?.(state.contextVersion,metadata);return state.contextVersion},setRoomSameVersion:room=>{state={...state,room}},poll:context.poll}
 }
 test('main and display constructors share an uncached nonpersistent UI session separate from authentication',async()=>{
  const f=await fixture();await f.options().openOverlay();await f.options().openMessageOverlay()
@@ -221,11 +223,12 @@ test('context generations invalidate pending queries and stale raw opt-ins acros
  assert.equal(f.handlers['collector:subscribe']({sender,senderFrame:sender.mainFrame},true,after),true)
  await f.poll();assert.equal(f.calls.raw,1)
 })
-test('close waits for flush, shows failure without stopping the app, then permits successful retry',async()=>{
+test('explicit quit waits for flush, shows failure without stopping the app, then permits successful retry',async()=>{
  const f=await fixture();f.setFailure(true)
  const event={preventDefault(){this.prevented=true}}
- f.windows[0].emit('close',event);assert.equal(event.prevented,true)
+ f.windows[0].emit('close',event);assert.equal(event.prevented,true);f.app.quit()
  await new Promise(resolve=>setImmediate(resolve))
+ assert.equal(f.windows[0].isVisible(),true);assert.equal(f.trays[0].isDestroyed(),false)
  assert.equal(f.calls.stop,0);assert.equal(f.calls.dialogs,1);assert.equal(f.calls.quit,undefined)
  f.setFailure(false);f.app.quit();await new Promise(resolve=>setImmediate(resolve))
  assert.equal(f.calls.stop,1);assert.equal(f.calls.quit,true)
@@ -311,4 +314,51 @@ test('scope invalidation inside stop final flush leaves app running and the next
  const previous=sent.filter(s=>s.channel==='display:close-request').length;f.app.quit();await new Promise(r=>setImmediate(r))
  assert.equal(f.calls.quit,undefined);assert.equal(sent.filter(s=>s.channel==='display:close-request').length,previous+1)
  f.handlers['display:close-answer'](event,'messages',sent.at(-1).value.id,false,version);await new Promise(r=>setImmediate(r));assert.equal(disposed,0)
+})
+
+test('main close hides to the tray without flushing, stopping or asking to discard edits',async()=>{
+ const f=await fixture(),main=f.windows[0],sent=[],event={sender:main.webContents,senderFrame:main.webContents.mainFrame}
+ main.webContents.send=(channel,value)=>sent.push({channel,value})
+ f.handlers['main:close-guard'](event,true,0)
+ await f.options().openMessageOverlay();const messages=f.windows[1]
+ main.close();main.close();await new Promise(r=>setImmediate(r))
+ assert.equal(main.isVisible(),false);assert.equal(main.isDestroyed(),false)
+ assert.equal(messages.isDestroyed(),false);assert.equal(f.calls.flush,0);assert.equal(f.calls.stop,0)
+ assert.equal(f.calls.quit,undefined);assert.equal(sent.some(s=>s.channel==='display:close-request'),false)
+ assert.equal(f.trays.length,1);assert.equal(f.trays[0].isDestroyed(),false)
+ main.minimized=true;f.trays[0].emit('click')
+ assert.equal(main.isVisible(),true);assert.equal(main.isMinimized(),false);assert.ok(main.focused)
+ main.close();f.app.emit('second-instance');assert.equal(main.isVisible(),true)
+})
+test('tray exit keeps the icon after canceled consent and destroys it after successful shutdown',async()=>{
+ const f=await fixture(),main=f.windows[0],sent=[],event={sender:main.webContents,senderFrame:main.webContents.mainFrame}
+ main.webContents.send=(channel,value)=>sent.push({channel,value})
+ f.handlers['main:close-guard'](event,true,0);main.close()
+ assert.equal(f.trays.length,1);const tray=f.trays[0],tick=()=>new Promise(r=>setImmediate(r))
+ tray.emit('right-click');tray.menu.items.find(item=>item.label==='退出').click();await tick()
+ assert.equal(main.isVisible(),true,'Exit consent must be visible even when main was hidden')
+ main.close();assert.equal(main.isVisible(),true,'Closing during pending exit must not hide the consent dialog')
+ let request=sent.filter(item=>item.channel==='display:close-request').at(-1).value
+ f.handlers['main:close-answer'](event,request.id,false,0);await tick()
+ assert.equal(tray.isDestroyed(),false);assert.equal(f.calls.stop,0)
+ tray.emit('right-click');tray.menu.items.find(item=>item.label==='退出').click();await tick()
+ request=sent.filter(item=>item.channel==='display:close-request').at(-1).value
+ f.handlers['main:close-answer'](event,request.id,true,0);await tick()
+ assert.equal(f.calls.flush,1);assert.equal(f.calls.stop,1);assert.equal(f.calls.quit,true);assert.equal(tray.isDestroyed(),true)
+})
+
+test('tray shortcuts use validated product actions and refresh availability as the context changes',async()=>{
+ const f=await fixture(),native=f.trays[0]
+ f.product.overlay=()=>({visible:true});native.emit('right-click')
+ await native.menu.items.find(item=>item.label==='弹幕弹窗').click();assert.equal(f.calls.action,'messageOverlay')
+ await native.menu.items.find(item=>item.label==='挑战弹窗').click();assert.equal(f.calls.action,'overlay')
+ const previous=native.menu.items;f.product.overlay=()=>({visible:false});f.product.messageOverlay=()=>({visible:false})
+ f.calls.action=null;await previous.find(item=>item.label==='挑战弹窗').click();assert.equal(f.calls.action,null)
+ native.emit('right-click');assert.equal(native.menu.items.find(item=>item.label==='挑战弹窗').enabled,false)
+ assert.equal(native.menu.items.find(item=>item.label==='弹幕弹窗').enabled,false)
+})
+test('if tray creation fails native close follows the original guarded shutdown',async()=>{
+ const f=await fixture({failTray:true});assert.equal(f.trays.length,0)
+ f.windows[0].close();await new Promise(r=>setImmediate(r))
+ assert.equal(f.calls.flush,1);assert.equal(f.calls.stop,1);assert.equal(f.calls.quit,true)
 })

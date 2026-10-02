@@ -4,6 +4,7 @@ const {BrowserWindow,dialog}=require('electron'),fixture=require('./fixtures/smo
 // Runs only from the existing --smoke entry, with synthetic auth and its temporary profile.
 module.exports=async({main,product,app,run,wait,until,click,input,capture,output})=>{
  const checks=[],memory=[],errors=[],consumerCycles=[],scenario=process.env.LIT_SMOKE_CASE
+ if(scenario==='feature-main-quit')return require('./main-tray-drafts-smoke.cjs')({main,product,app,run,wait,until,click,input,capture})
  const find=kind=>BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith(kind==='messages'?'#messages-overlay':'#overlay'))
  const exec=(kind,code)=>find(kind).webContents.executeJavaScript(code)
  const eventually=async(kind,code)=>{for(let i=0;i<80;i++){if(await exec(kind,code))return;await wait(50)}throw Error(kind+' assertion timed out: '+code)}
@@ -124,44 +125,6 @@ module.exports=async({main,product,app,run,wait,until,click,input,capture,output
   mark('two-popup ordinary quit cancel, fresh approvals, privacy during prompt, flush failure and usable retry')
  }
 
- if(scenario==='feature-main-quit'){
-  for(const kind of ['challenge','messages']){const w=find(kind);w.close();await closed(kind,w)}
-  await owner('challenge','settings');const before=product.display().overlaySettings.backgroundTransparency
-  await input('[data-testid="overlay-transparency"]','71');main.close();main.close();app.quit()
-  await until('!!document.querySelector("[data-testid=draft-leave]")');assert.equal(await run('document.querySelectorAll("[data-testid=draft-leave]").length'),1)
-  await mainText('继续编辑');assert.equal(main.isDestroyed(),false);assert.equal(BrowserWindow.getAllWindows().length,1)
-  assert.equal(await run('document.querySelector("[data-testid=overlay-transparency]").value'),'71')
-  const total=(await product.query('feed')).total;fixture.emit({id:'main-canceled-quit',type:'comment',text:'still collecting'});assert.equal((await product.query('feed')).total,total+1)
-  const action=product.action,flush=product.flush,showErrorBox=dialog.showErrorBox,boxes=[]
-  try{
-   product.action=async(type,...args)=>{if(type==='overlaySettings')throw Error('Synthetic main save failure');return action(type,...args)}
-   main.close();await until('!!document.querySelector("[data-testid=draft-leave]")');await mainText('保存并离开');await until('!!document.querySelector(".inline-error")')
-   assert.equal(main.isDestroyed(),false);assert.equal(product.display().overlaySettings.backgroundTransparency,before);assert.equal(await run('document.querySelector("[data-testid=overlay-transparency]").value'),'71')
-   product.action=action;product.flush=async()=>({error:{message:'Synthetic quit checkpoint failure'}});dialog.showErrorBox=(...args)=>boxes.push(args)
-   await mainText('保存并离开');await until('!document.querySelector("[data-testid=draft-leave]")');for(let i=0;i<80&&!boxes.length;i++)await wait(50)
-   assert.equal(boxes.length,1);assert.equal(product.display().overlaySettings.backgroundTransparency,71)
-   await until('!document.querySelector("dialog").inert');await input('[data-testid="overlay-transparency"]','72');app.quit();await until('!!document.querySelector("[data-testid=draft-leave]")');await mainText('放弃修改')
-   for(let i=0;i<80&&boxes.length<2;i++)await wait(50);assert.equal(boxes.length,2);assert.equal(product.display().overlaySettings.backgroundTransparency,71)
-  }finally{product.action=action;product.flush=flush;dialog.showErrorBox=showErrorBox}
-  await until('!document.querySelector("dialog").inert');await click('[aria-label="关闭弹窗"]')
-  mark('main-only native close/application quit: coalesced continue, failed save/retry, save, discard, collection survives')
-  await open('messages');await edit('messages',63);await owner('challenge','settings');await input('[data-testid="overlay-transparency"]','74')
-  app.quit();await until('!!document.querySelector("[data-testid=draft-leave]")');await mainText('保存并离开')
-  await eventually('messages','!!document.querySelector("[data-testid=draft-leave]")')
-  assert.equal(await run('document.querySelector(".app-shell").inert&&document.querySelector("dialog").inert'),true,'Approved main cannot create unconfirmed changes while popup decision is pending')
-  await capture('main-approved-waiting-popup.png');await choose('messages','继续编辑');await until('!document.querySelector(".app-shell").inert&&!document.querySelector("dialog").inert')
-  assert.equal(product.display().overlaySettings.backgroundTransparency,74);await input('[data-testid="overlay-transparency"]','75');assert.equal(await run('document.querySelector("[data-testid=overlay-transparency]").value'),'75')
-  app.quit();await until('!!document.querySelector("[data-testid=draft-leave]")');await mainText('放弃修改');await eventually('messages','!!document.querySelector("[data-testid=draft-leave]")');await choose('messages','继续编辑')
-  await until('!document.querySelector("dialog").inert');await click('[aria-label="关闭弹窗"]')
-  mark('mixed main/popup consent freezes approved main editor and releases it after popup cancellation')
-  await click('[aria-label="编辑互动规则"]');await until('!!document.querySelector("[data-testid=rules-follow-reward]")')
-  await input('[data-testid="rules-follow-reward"]','9');main.close();await until('!!document.querySelector("[data-testid=draft-leave]")');await mainText('继续编辑')
-  app.quit();await until('!!document.querySelector("[data-testid=draft-leave]")');await product.action('logout')
-  await until('!!document.querySelector("[data-testid=setup-login]")&&!document.querySelector(".feature-settings,[data-testid=draft-leave]")')
-  await eventually('messages','!document.querySelector("[data-testid=popup-settings], [data-testid=draft-leave]")')
-  assert.equal(main.isDestroyed(),false);await capture('main-quit-privacy-cleared.png')
-  mark('main rules draft participates; logout immediately clears main and popup drafts and cancels old quit')
- }
 
  // Observe actual product delivery and reader work, not an invented subscriber registry.
  // Main stays on challenge: the message popup is the sole possible feed consumer.
