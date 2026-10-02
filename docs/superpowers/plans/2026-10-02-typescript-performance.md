@@ -72,4 +72,14 @@ Example contributor release commands: `npm version patch --no-git-tag-version`, 
 - [x] Review task outputs and address correctness/spec gaps.
 - [x] Run the complete validation gate and compare measured package/renderer/latency results against the recorded baseline.
 - [x] Record evidence and limitations in `docs/performance.md`; update guide commands and mark this plan's completed tasks.
-- [ ] Commit coherent local changes and report the branch, commit, installer path, measurements, and external tests still requiring real accounts/games.
+- [x] Commit coherent local changes and report the branch, commit, installer path, measurements, and external tests still requiring real accounts/games.
+
+## Final verification
+
+Implementation committed locally as `ac9973e` on `refactor/typescript-performance`. Final independent review approved with no open findings. Clean install, three strict TS configurations, Node 22 full unit suite (493/493), production renderer build, guided native regression, focused display/settings/theme/reset/capability cases, and actual mounted development rebuild/restart passed.
+
+Standard NSIS build reached Electron download and encountered ETIMEDOUT; the equivalent build with the installed Electron 44.4.5 directory supplied via a temporary `electronDist` configuration succeeded. The final packaged executable passed its isolated-profile and production-boundary checks. Package report retained the required licenses and exact three locales, with no forbidden sources or development modules.
+
+Measured runtime directory: 338,656,777 bytes; installer: 94,367,413 bytes; ASAR: 2,128,437 bytes. Before/after launch and interaction data are recorded in `docs/performance.md` and `docs/performance-data/`. FCP was unavailable; new-profile DOM-ready median increased while warm/profile and interaction timings remain comparable. These results do not prove first-paint or real-network latency improvement.
+
+No remote was configured or pushed. GitHub execution, real account/login/live-room/game acceptance, signer reference permissions and unverified artwork provenance remain documented external release considerations.
