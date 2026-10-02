@@ -15,6 +15,22 @@ function environment(extra={}){
   return {p,handles}
 }
 
+test('product unknown configure and rules payloads fail validation without changing the active challenge',async()=>{
+ const {p}=environment()
+ try{
+  await p.action('selectPlatform','douyin');await p.action('login')
+  const initial=p.display().id
+  for(const payload of [null,[],42,{}, {metricId:9}])await assert.rejects(p.action('configureChallenge',payload),/玩法指标无效/)
+  await assert.rejects(p.action('configureChallenge',{metricId:'champion-kills',modeGroup:[],target:10,rules}),/所选模式不支持此玩法/)
+  for(const payload of [null,{...rules,gifts:[null]},{...rules,likeEvery:'100'}])await assert.rejects(p.action('configureChallenge',{metricId:'champion-kills',target:10,rules:payload}),error=>!(error instanceof TypeError))
+  assert.equal(p.display().id,initial)
+  await p.action('configureChallenge',{metricId:'champion-kills',target:10,rules:{...rules,commentsEnabled:true,commentKeywords:[' hello ','hello']}})
+  assert.deepEqual(p.display().rules.commentKeywords,['hello'])
+  await assert.rejects(p.action('rules',null),/互动规则无效/)
+  assert.deepEqual(p.display().rules.commentKeywords,['hello'])
+ }finally{await p.stop()}
+})
+
 test('mode groups can configure the same metric independently and project actual match mode without credentials',async()=>{
  const {p}=environment(),make=(queue,kills=0,time=10)=>{
   const data=require('../electron/collector.cjs').mockGame(0)

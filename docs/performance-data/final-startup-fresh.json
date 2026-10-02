@@ -1,0 +1,59 @@
+{
+  "recordedAt": "2026-10-02T04:28:52.000Z",
+  "profileMode": "fresh",
+  "method": "Fresh isolated profiles; OS file cache is not reset. CDP enabled for observation. Onboarding observation includes CDP attachment and polling overhead, with no artificial delay subtracted. Click latency measures DOM availability, not compositor presentation. No real account or room is connected.",
+  "results": [
+    {
+      "launchToDOMReadyMs": 338.20004883408546,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 364,
+      "onboardingClickToDOMMs": 23.700000017881393
+    },
+    {
+      "launchToDOMReadyMs": 320.70009765028954,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 348,
+      "onboardingClickToDOMMs": 24.30000001192093
+    },
+    {
+      "launchToDOMReadyMs": 357.89990234375,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 390,
+      "onboardingClickToDOMMs": 26.80000001192093
+    },
+    {
+      "launchToDOMReadyMs": 379.29995116591454,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 403,
+      "onboardingClickToDOMMs": 24.5
+    },
+    {
+      "launchToDOMReadyMs": 330.19990235567093,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 354,
+      "onboardingClickToDOMMs": 22.700000017881393
+    }
+  ],
+  "summary": {
+    "launchToDOMReadyMs": {
+      "samples": 5,
+      "medianMs": 338.2,
+      "p95Ms": 379.3
+    },
+    "launchToFirstContentfulPaintMs": {
+      "samples": 0,
+      "medianMs": null,
+      "p95Ms": null
+    },
+    "launchToOnboardingObservedMs": {
+      "samples": 5,
+      "medianMs": 364,
+      "p95Ms": 403
+    },
+    "onboardingClickToDOMMs": {
+      "samples": 5,
+      "medianMs": 24.3,
+      "p95Ms": 26.8
+    }
+  }
+}

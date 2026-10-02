@@ -1,9 +1,10 @@
+const loadRenderer=require('./load-renderer.cjs')
 const {test}=require('node:test'),assert=require('node:assert/strict')
 const {parseDouyinRoom}=require('../electron/platforms.cjs')
 
 test('submitted room links and whitespace acknowledge the same room ID as the adapter',async()=>{
- const {roomInputForSubmission}=await import('../src/room-connection.js')
- const d=await import('../src/settings-draft.js')
+ const {roomInputForSubmission}=await Promise.resolve(loadRenderer('../src/room-connection.ts'))
+ const d=await Promise.resolve(loadRenderer('../src/settings-draft.ts'))
  assert.equal(typeof roomInputForSubmission,'function')
  for(const input of ['123456',' 123456 ','https://live.douyin.com/123456',' https://live.douyin.com/123456/?from=share ']){
   const normalized=roomInputForSubmission(input)
@@ -19,7 +20,7 @@ test('submitted room links and whitespace acknowledge the same room ID as the ad
 })
 
 test('room input normalization does not convert invalid or unrelated URLs into valid room IDs',async()=>{
- const {roomInputForSubmission}=await import('../src/room-connection.js')
+ const {roomInputForSubmission}=await Promise.resolve(loadRenderer('../src/room-connection.ts'))
  assert.equal(typeof roomInputForSubmission,'function')
  for(const input of ['http://live.douyin.com/123','https://live.douyin.com.evil.test/123','https://user@live.douyin.com/123','https://live.douyin.com/path/123','not a room']){
   assert.equal(roomInputForSubmission(input),input)

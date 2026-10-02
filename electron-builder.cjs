@@ -5,8 +5,10 @@ module.exports={
  productName:brand.title,
  directories:{output:'release'},
  asar:true,
+ compression:'maximum',
+ electronLanguages:['en-US','zh-CN','zh-TW'],
  // Ship runtime code/assets only: no tests, design sources or user profiles.
- files:['dist/**/*','electron/**/*.cjs','app-brand.json','package.json'],
+ files:['dist/**/*','electron/**/*.cjs','app-brand.json','package.json','LICENSE','THIRD_PARTY_NOTICES.md'],
  win:{
   target:[{target:'nsis',arch:['x64']}],
   executableName:'PlayCast',

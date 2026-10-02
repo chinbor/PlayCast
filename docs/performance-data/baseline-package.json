@@ -1,0 +1,329 @@
+{
+  "unpackedBytes": 398467075,
+  "executableBytes": 246090752,
+  "asarBytes": 13169170,
+  "asarGroups": {
+    "node_modules/react": 177421,
+    "node_modules/react-dom": 8062585,
+    "node_modules/scheduler": 82212,
+    "node_modules/ws": 135660,
+    "app-brand.json": 85,
+    "dist": 4439793,
+    "electron": 229019,
+    "package.json": 315
+  },
+  "localeBytes": 50643495,
+  "locales": [
+    {
+      "name": "af.pak",
+      "bytes": 636155
+    },
+    {
+      "name": "am.pak",
+      "bytes": 1029450
+    },
+    {
+      "name": "ar.pak",
+      "bytes": 1130919
+    },
+    {
+      "name": "bg.pak",
+      "bytes": 1178203
+    },
+    {
+      "name": "bn.pak",
+      "bytes": 1513545
+    },
+    {
+      "name": "ca.pak",
+      "bytes": 716908
+    },
+    {
+      "name": "cs.pak",
+      "bytes": 743351
+    },
+    {
+      "name": "da.pak",
+      "bytes": 666471
+    },
+    {
+      "name": "de.pak",
+      "bytes": 717862
+    },
+    {
+      "name": "el.pak",
+      "bytes": 1295538
+    },
+    {
+      "name": "en-GB.pak",
+      "bytes": 580030
+    },
+    {
+      "name": "en-US.pak",
+      "bytes": 586582
+    },
+    {
+      "name": "es-419.pak",
+      "bytes": 707627
+    },
+    {
+      "name": "es.pak",
+      "bytes": 703941
+    },
+    {
+      "name": "et.pak",
+      "bytes": 642216
+    },
+    {
+      "name": "fa.pak",
+      "bytes": 1063069
+    },
+    {
+      "name": "fi.pak",
+      "bytes": 655113
+    },
+    {
+      "name": "fil.pak",
+      "bytes": 741385
+    },
+    {
+      "name": "fr.pak",
+      "bytes": 763461
+    },
+    {
+      "name": "gu.pak",
+      "bytes": 1495625
+    },
+    {
+      "name": "he.pak",
+      "bytes": 928748
+    },
+    {
+      "name": "hi.pak",
+      "bytes": 1586602
+    },
+    {
+      "name": "hr.pak",
+      "bytes": 715279
+    },
+    {
+      "name": "hu.pak",
+      "bytes": 765640
+    },
+    {
+      "name": "id.pak",
+      "bytes": 635080
+    },
+    {
+      "name": "it.pak",
+      "bytes": 693991
+    },
+    {
+      "name": "ja.pak",
+      "bytes": 842053
+    },
+    {
+      "name": "kn.pak",
+      "bytes": 1720240
+    },
+    {
+      "name": "ko.pak",
+      "bytes": 718705
+    },
+    {
+      "name": "lt.pak",
+      "bytes": 777281
+    },
+    {
+      "name": "lv.pak",
+      "bytes": 774733
+    },
+    {
+      "name": "ml.pak",
+      "bytes": 1767850
+    },
+    {
+      "name": "mr.pak",
+      "bytes": 1467313
+    },
+    {
+      "name": "ms.pak",
+      "bytes": 668356
+    },
+    {
+      "name": "nb.pak",
+      "bytes": 638121
+    },
+    {
+      "name": "nl.pak",
+      "bytes": 664759
+    },
+    {
+      "name": "pl.pak",
+      "bytes": 742064
+    },
+    {
+      "name": "pt-BR.pak",
+      "bytes": 697019
+    },
+    {
+      "name": "pt-PT.pak",
+      "bytes": 701056
+    },
+    {
+      "name": "ro.pak",
+      "bytes": 728144
+    },
+    {
+      "name": "ru.pak",
+      "bytes": 1200985
+    },
+    {
+      "name": "sk.pak",
+      "bytes": 755481
+    },
+    {
+      "name": "sl.pak",
+      "bytes": 722720
+    },
+    {
+      "name": "sr.pak",
+      "bytes": 1112909
+    },
+    {
+      "name": "sv.pak",
+      "bytes": 646543
+    },
+    {
+      "name": "sw.pak",
+      "bytes": 685127
+    },
+    {
+      "name": "ta.pak",
+      "bytes": 1758067
+    },
+    {
+      "name": "te.pak",
+      "bytes": 1629379
+    },
+    {
+      "name": "th.pak",
+      "bytes": 1368866
+    },
+    {
+      "name": "tr.pak",
+      "bytes": 697394
+    },
+    {
+      "name": "uk.pak",
+      "bytes": 1211563
+    },
+    {
+      "name": "ur.pak",
+      "bytes": 1047994
+    },
+    {
+      "name": "vi.pak",
+      "bytes": 830014
+    },
+    {
+      "name": "zh-CN.pak",
+      "bytes": 592081
+    },
+    {
+      "name": "zh-TW.pak",
+      "bytes": 583887
+    }
+  ],
+  "entries": 173,
+  "forbiddenEntries": [
+    "node_modules/react",
+    "node_modules/react/LICENSE",
+    "node_modules/react/cjs",
+    "node_modules/react/cjs/react-compiler-runtime.development.js",
+    "node_modules/react/cjs/react-compiler-runtime.production.js",
+    "node_modules/react/cjs/react-compiler-runtime.profiling.js",
+    "node_modules/react/cjs/react-jsx-dev-runtime.development.js",
+    "node_modules/react/cjs/react-jsx-dev-runtime.production.js",
+    "node_modules/react/cjs/react-jsx-dev-runtime.profiling.js",
+    "node_modules/react/cjs/react-jsx-dev-runtime.react-server.development.js",
+    "node_modules/react/cjs/react-jsx-dev-runtime.react-server.production.js",
+    "node_modules/react/cjs/react-jsx-runtime.development.js",
+    "node_modules/react/cjs/react-jsx-runtime.production.js",
+    "node_modules/react/cjs/react-jsx-runtime.profiling.js",
+    "node_modules/react/cjs/react-jsx-runtime.react-server.development.js",
+    "node_modules/react/cjs/react-jsx-runtime.react-server.production.js",
+    "node_modules/react/cjs/react.development.js",
+    "node_modules/react/cjs/react.production.js",
+    "node_modules/react/cjs/react.react-server.development.js",
+    "node_modules/react/cjs/react.react-server.production.js",
+    "node_modules/react/compiler-runtime.js",
+    "node_modules/react/index.js",
+    "node_modules/react/jsx-dev-runtime.js",
+    "node_modules/react/jsx-dev-runtime.react-server.js",
+    "node_modules/react/jsx-runtime.js",
+    "node_modules/react/jsx-runtime.react-server.js",
+    "node_modules/react/package.json",
+    "node_modules/react/react.react-server.js",
+    "node_modules/react-dom",
+    "node_modules/react-dom/LICENSE",
+    "node_modules/react-dom/cjs",
+    "node_modules/react-dom/cjs/react-dom-client.development.js",
+    "node_modules/react-dom/cjs/react-dom-client.production.js",
+    "node_modules/react-dom/cjs/react-dom-profiling.development.js",
+    "node_modules/react-dom/cjs/react-dom-profiling.profiling.js",
+    "node_modules/react-dom/cjs/react-dom-server-legacy.browser.development.js",
+    "node_modules/react-dom/cjs/react-dom-server-legacy.browser.production.js",
+    "node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js",
+    "node_modules/react-dom/cjs/react-dom-server-legacy.node.production.js",
+    "node_modules/react-dom/cjs/react-dom-server.browser.development.js",
+    "node_modules/react-dom/cjs/react-dom-server.browser.production.js",
+    "node_modules/react-dom/cjs/react-dom-server.bun.development.js",
+    "node_modules/react-dom/cjs/react-dom-server.bun.production.js",
+    "node_modules/react-dom/cjs/react-dom-server.edge.development.js",
+    "node_modules/react-dom/cjs/react-dom-server.edge.production.js",
+    "node_modules/react-dom/cjs/react-dom-server.node.development.js",
+    "node_modules/react-dom/cjs/react-dom-server.node.production.js",
+    "node_modules/react-dom/cjs/react-dom-test-utils.development.js",
+    "node_modules/react-dom/cjs/react-dom-test-utils.production.js",
+    "node_modules/react-dom/cjs/react-dom.development.js",
+    "node_modules/react-dom/cjs/react-dom.production.js",
+    "node_modules/react-dom/cjs/react-dom.react-server.development.js",
+    "node_modules/react-dom/cjs/react-dom.react-server.production.js",
+    "node_modules/react-dom/client.js",
+    "node_modules/react-dom/client.react-server.js",
+    "node_modules/react-dom/index.js",
+    "node_modules/react-dom/package.json",
+    "node_modules/react-dom/profiling.js",
+    "node_modules/react-dom/profiling.react-server.js",
+    "node_modules/react-dom/react-dom.react-server.js",
+    "node_modules/react-dom/server.browser.js",
+    "node_modules/react-dom/server.bun.js",
+    "node_modules/react-dom/server.edge.js",
+    "node_modules/react-dom/server.js",
+    "node_modules/react-dom/server.node.js",
+    "node_modules/react-dom/server.react-server.js",
+    "node_modules/react-dom/static.browser.js",
+    "node_modules/react-dom/static.edge.js",
+    "node_modules/react-dom/static.js",
+    "node_modules/react-dom/static.node.js",
+    "node_modules/react-dom/static.react-server.js",
+    "node_modules/react-dom/test-utils.js",
+    "node_modules/scheduler",
+    "node_modules/scheduler/LICENSE",
+    "node_modules/scheduler/cjs",
+    "node_modules/scheduler/cjs/scheduler-unstable_mock.development.js",
+    "node_modules/scheduler/cjs/scheduler-unstable_mock.production.js",
+    "node_modules/scheduler/cjs/scheduler-unstable_post_task.development.js",
+    "node_modules/scheduler/cjs/scheduler-unstable_post_task.production.js",
+    "node_modules/scheduler/cjs/scheduler.development.js",
+    "node_modules/scheduler/cjs/scheduler.native.development.js",
+    "node_modules/scheduler/cjs/scheduler.native.production.js",
+    "node_modules/scheduler/cjs/scheduler.production.js",
+    "node_modules/scheduler/index.js",
+    "node_modules/scheduler/index.native.js",
+    "node_modules/scheduler/package.json",
+    "node_modules/scheduler/unstable_mock.js",
+    "node_modules/scheduler/unstable_post_task.js"
+  ]
+}

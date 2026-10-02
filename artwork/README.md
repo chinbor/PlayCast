@@ -4,7 +4,7 @@
 
 ## 素材来源与处理
 
-- 参考图：`docs/superpowers/specs/assets/app-icons-concept-v1.png`，此前由 Agnes 生成的原创概念稿。
+- 参考图：`artwork/app-icons-concept-v1.png`，此前由 Agnes 生成的原创概念稿。
 - 独立母图：`playcast-icon-master.png`，使用 Agnes ImageGen 的 edit 模式，1K、1:1，一次请求，无新增项目依赖。
 - Agnes 实际返回 RGB 白色展示背景，而非透明通道。`scripts/build-brand-icons.py` 从珊瑚色外轮廓提取封闭蒙版，保留内部象牙白图形并去除外部展示底板/阴影，输出真实透明边缘。
 - 最终运行资源：`public/assets/brand/playcast.png`（512px）和 `playcast.ico`（16–256px，9 个尺寸）。Vite 构建复制到 `dist/assets/brand`。母图及此文档不被 Vite 复制。

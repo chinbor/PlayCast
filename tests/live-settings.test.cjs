@@ -1,5 +1,6 @@
+const loadRenderer=require('./load-renderer.cjs')
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const load=()=>import('../src/live-settings.js')
+const load=()=>Promise.resolve(loadRenderer('../src/live-settings.ts'))
 const tick=()=>new Promise(r=>setImmediate(r))
 test('live settings apply first edit immediately and coalesce rapid edits behind one pending request',async()=>{
  const {createLiveSettingsWriter}=await load();let release;const sent=[],timers=new Map();let id=0

@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),path=require('node:path'),Module=require('node:module'),{buildSync}=require('esbuild')
 
 test('browser preview follows the same mode-group draft separation as Electron',async()=>{
- const filename=path.resolve(__dirname,'../src/browser-preview.js')
+ const filename=path.resolve(__dirname,'../src/browser-preview.ts')
  const code=buildSync({entryPoints:[filename],bundle:true,platform:'node',format:'cjs',write:false}).outputFiles[0].text
  const loaded=new Module(filename,module);loaded.filename=filename;loaded.paths=Module._nodeModulePaths(path.dirname(filename));loaded._compile(code,filename)
  const api=loaded.exports.createPreview(),before=await api.getProduct()
@@ -17,7 +17,7 @@ test('browser preview follows the same mode-group draft separation as Electron',
 })
 
 test('browser preview resumes the exact draft ID emitted by gameplay UI',async()=>{
- const filename=path.resolve(__dirname,'../src/browser-preview.js')
+ const filename=path.resolve(__dirname,'../src/browser-preview.ts')
  const code=buildSync({entryPoints:[filename],bundle:true,platform:'node',format:'cjs',write:false}).outputFiles[0].text
  const loaded=new Module(filename,module);loaded.filename=filename;loaded.paths=Module._nodeModulePaths(path.dirname(filename));loaded._compile(code,filename)
  const api=loaded.exports.createPreview()

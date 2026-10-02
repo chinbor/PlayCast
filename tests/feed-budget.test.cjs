@@ -1,3 +1,4 @@
+const loadRenderer=require('./load-renderer.cjs')
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),{createRequire}=require('node:module')
 const filename=require.resolve('../electron/message-feed.cjs')
 const tick=()=>new Promise(resolve=>setImmediate(resolve))
@@ -12,7 +13,7 @@ function observedFeed(){
  return {feed:module.exports.createFeed(),sets,maps}
 }
 test('100,000 skewed long-body events plateau at independent row/byte/key budgets',async t=>{
- const {feed,sets,maps}=observedFeed(),{mergeDisplayFeed}=await import('../src/display-feed.js')
+ const {feed,sets,maps}=observedFeed(),{mergeDisplayFeed}=await Promise.resolve(loadRenderer('../src/display-feed.ts'))
  const types=['comment','like','enter','follow','gift'],samples=[]
  let reader=null
  feed.ingest({id:'rare-gift',type:'gift',count:1});feed.ingest({id:'rare-follow',type:'follow'})
@@ -55,7 +56,7 @@ test('100,000 skewed long-body events plateau at independent row/byte/key budget
 })
 
 test('twelve reader scope/unmount cycles dispose listeners and reject pending completions without queues',async()=>{
- const {createDisplayFeedController,subscribeFeedVisibility}=await import('../src/display-feed.js')
+ const {createDisplayFeedController,subscribeFeedVisibility}=await Promise.resolve(loadRenderer('../src/display-feed.ts'))
  const {createFeed}=require('../electron/message-feed.cjs'),feed=createFeed();feed.ingest({id:'private',type:'comment',text:'old scope'})
  const documentListeners=new Set(),nativeListeners=new Set(),doc={visibilityState:'visible',addEventListener:(_,fn)=>documentListeners.add(fn),removeEventListener:(_,fn)=>documentListeners.delete(fn)}
  for(let cycle=0;cycle<12;cycle++){

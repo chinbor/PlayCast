@@ -1,0 +1,16 @@
+import type {ProductProps,QueryClient} from '../renderer-types'
+
+import {useState} from 'react'
+import {useQuery} from '../queries'
+const bytes=(n:number=0)=>n>=1048576?`${(n/1048576).toFixed(2)} MB`:n>=1024?`${(n/1024).toFixed(1)} KB`:`${n||0} B`
+export default function StoragePanel({api,scope,s,act,busy,preview=false}:ProductProps&{api:QueryClient;scope:string}){
+  const [refresh,setRefresh]=useState(0),[confirm,setConfirm]=useState(false),[message,setMessage]=useState(''),[resetOpen,setResetOpen]=useState(false),[confirmation,setConfirmation]=useState('')
+  const query=useQuery(api,'storage',undefined,scope+':'+refresh),status=s.storage||{}
+  return <section data-testid="storage-panel"><h3>本地存储</h3><p className="muted">挑战与规则保存在这台电脑。历史记录不会自动清除。</p><p role="status" className="settings-note">{status.pending?'正在保存，最近变化尚未写入完成。':status.error||s.persistenceError?'保存异常，请保留应用并重试。':'最近变化已保存。'}</p>{(status.error||s.persistenceError)&&<p role="alert">{s.persistenceError||'本地存储出现错误，请检查磁盘空间与权限。'}</p>}
+  {query.loading?<p role="status">正在统计存储…</p>:query.error?<p role="alert">{query.error}</p>:<div className="storage-grid">{([['hot','进度与规则'],['history','挑战历史'],['cache','可重建缓存'],['recovery','备份与恢复文件']] as const).map(([key,label])=><div key={key}><span>{label}</span><strong>{bytes(query.data?.categories?.[key])}</strong></div>)}</div>}
+  <p className="muted">恢复日志达到 2 MB 或 64 次提交后，会在主快照和备份均保存成功后归并；较大的快照自动无损压缩。旧版原文件与迁移备份仍保留，挑战历史不会自动删除。</p><div className="button-row"><button onClick={()=>setRefresh(n=>n+1)}>刷新占用</button><button disabled={busy} onClick={()=>setConfirm(true)}>清理可重建缓存</button></div>
+  {confirm&&<div className="change-confirm"><b>仅清理礼物目录缓存与协议诊断</b><p>不会删除挑战历史、玩法草稿、互动规则、登录凭据或主题偏好。礼物目录会在需要时重新获取。</p><div className="button-row"><button disabled={busy} data-testid="clear-caches-confirm" onClick={async()=>{setMessage('');const result=await act('clearCaches');if(result){setConfirm(false);setMessage('缓存已清理。');setRefresh(n=>n+1)}else setMessage('清理失败，数据已保留，请重试。')}}>确认清理缓存</button><button disabled={busy} onClick={()=>setConfirm(false)}>取消</button></div></div>}{message&&<p role="status">{message}</p>}
+  <section className="storage-reset" aria-label="恢复初始状态"><h3>恢复初始状态</h3><p>删除本应用在这台电脑上的全部用户数据，退出登录，并回到首次使用引导。此操作不可撤销，也会清除用于恢复的备份。</p><button className="button-danger" data-testid="storage-reset-open" disabled={busy||preview} onClick={()=>{setConfirm(false);setResetOpen(true);setConfirmation('')}}>删除全部用户数据…</button>
+  {resetOpen&&<div className="reset-confirmation" role="group" aria-label="确认删除全部用户数据"><b>以下数据将全部删除（包含所有账号及演练数据）</b><ul><li>当前挑战、玩法草稿、规则与全部挑战历史</li><li>本应用保存的登录 Cookie、账号资料和直播间信息</li><li>主题偏好、展示设置、礼物缓存、诊断采样、旧存档及恢复备份</li></ul><p>主题将恢复为「随系统」。会断开采集并关闭展示、配置和登录窗口。不会删除程序、随包图片字体，也不会影响系统浏览器。</p><label className="form-label">请输入「重置」确认<input autoComplete="off" data-testid="storage-reset-input" disabled={busy} value={confirmation} onChange={e=>setConfirmation(e.target.value)}/></label><div className="button-row"><button className="button-danger" data-testid="storage-reset-confirm" disabled={busy||confirmation!=='重置'} onClick={()=>act('factoryReset',{confirmation,contextVersion:s.contextVersion})}>确认删除并重置</button><button data-testid="storage-reset-cancel" disabled={busy} onClick={()=>{setResetOpen(false);setConfirmation('')}}>取消，保留数据</button></div></div>}
+  </section></section>
+}

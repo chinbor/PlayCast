@@ -1,23 +1,27 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path')
 const {mockGame}=require('../electron/collector.cjs')
-module.exports=async({main,product,getProduct,app,openOverlay,getOverlay})=>{
+module.exports=async({main,product,getProduct,app,openOverlay,getOverlay,deliverRawSnapshot})=>{
   // A hidden Chromium window may return a stale compositor frame even after
   // DOM assertions pass. Show the isolated fixture window without stealing focus.
   main.showInactive()
   const output=process.env.LIT_SMOKE_OUTPUT||path.join(app.getPath('temp'),'lit-guided-smoke');fs.mkdirSync(output,{recursive:true})
-  const run=code=>main.webContents.executeJavaScript(code).catch(error=>{error.message+='\nIsolated smoke expression: '+code;throw error})
+  const run=code=>main.webContents.executeJavaScript(code).catch(error=>{throw new Error('Isolated smoke expression failed: '+code,{cause:error})})
   const consoleErrors=[]
   main.webContents.on('console-message',details=>{if(details.level==='error')consoleErrors.push(details.message)})
   const wait=ms=>new Promise(r=>setTimeout(r,ms))
   async function until(code){for(let i=0;i<60;i++){if(await run(code))return;await wait(50)}throw Error('UI assertion timed out: '+code)}
   const exists=selector=>until('!!document.querySelector('+JSON.stringify(selector)+')')
-  const click=async selector=>{await exists(selector);await run('(()=>{const e=document.querySelector('+JSON.stringify(selector)+');for(let p=e.parentElement;p;p=p.parentElement)if(p.tagName==="DETAILS"&&!p.open)p.querySelector("summary").click();if(!e.getClientRects().length)throw Error("Control is not visible: "+'+JSON.stringify(selector)+');e.scrollIntoView({block:"nearest"});e.click()})()');await wait(150)}
+  const click=async selector=>{await exists(selector);await run('(()=>{const e=document.querySelector('+JSON.stringify(selector)+');for(let p=e.parentElement;p;p=p.parentElement)if(p.tagName==="DETAILS"&&!p.open&&!p.querySelector("summary").contains(e))p.querySelector("summary").click();if(!e.getClientRects().length)throw Error("Control is not visible: "+'+JSON.stringify(selector)+');e.scrollIntoView({block:"nearest"});e.click()})()');await wait(150)}
   const select=async(selector,value)=>{await click(selector);await click('[role="option"][data-value="'+value+'"]');await until('document.querySelector('+JSON.stringify(selector)+').getAttribute("aria-expanded")==="false"')}
   const input=async(selector,value)=>{await exists(selector);await run('(()=>{const e=document.querySelector('+JSON.stringify(selector)+');const proto=e.tagName==="TEXTAREA"?HTMLTextAreaElement.prototype:e.tagName==="SELECT"?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,"value").set.call(e,'+JSON.stringify(value)+');e.dispatchEvent(new Event(e.tagName==="SELECT"?"change":"input",{bubbles:true}))})()');await wait(75)}
   const capture=async name=>{if(main.isMinimized())main.restore();main.showInactive();await run('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');await wait(150);fs.writeFileSync(path.join(output,name),(await main.webContents.capturePage()).toPNG())}
   const checkLayout=()=>until('document.documentElement.scrollWidth<=innerWidth+1 && document.documentElement.scrollHeight<=innerHeight+1')
   const privateControls='.header-status, .header-actions, [role="dialog"], [data-testid="completed-value"], [data-testid="challenge-tab-history"], [data-testid="history-row"]'
   const assertLoggedOut=async()=>assert.equal(await run('!!document.querySelector('+JSON.stringify(privateControls)+')'),false,'Unauthenticated users must not see workspace controls or dialogs')
+  if(process.env.LIT_SMOKE_CASE==='performance'){
+    await require('./performance-smoke.cjs')({main,product,run,until,click,wait,output})
+    assert.deepEqual(consoleErrors,[]);return
+  }
   if(process.env.LIT_SMOKE_CASE==='settings-continuity'){
     await require('./settings-continuity-smoke.cjs')({wait});return
   }
@@ -190,7 +194,7 @@ module.exports=async({main,product,getProduct,app,openOverlay,getOverlay})=>{
   await until('document.querySelector(".unsupported-methods")?.textContent.includes("WebcastRanklistMessage")')
   await run('document.querySelector(".unsupported-methods").scrollIntoView({block:"center"})');await capture('22-unsupported-methods.png');await checkLayout();await click('[data-testid="tab-game"]')
   await capture('06-progress-small.png');await checkLayout();main.setSize(1360,920);await wait(200);await capture('07-progress.png')
-  await require('./context-ui-smoke.cjs')({main,product,run,wait,until,click})
+  await require('./context-ui-smoke.cjs')({main,product,run,wait,until,click,deliverRawSnapshot})
   console.log('Guided smoke: renderer reload starting')
   await new Promise((resolve,reject)=>{
     const contents=main.webContents

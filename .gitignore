@@ -12,3 +12,5 @@ smoke-preview.png
 .env.*
 !.env.example
 *.credentials
+electron/**/*.cjs
+public/main-appearance.js

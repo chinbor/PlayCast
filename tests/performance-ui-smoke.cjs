@@ -19,8 +19,14 @@ module.exports=async({main,product,run,wait,until,click,capture,checkLayout})=>{
   await click('[aria-label="打开设置"]');await capture('13-connections.png');await checkLayout()
   main.setSize(960,700);await wait(100);await capture('14-connections-small.png');await checkLayout()
   await run('document.querySelector("dialog").scrollTop=9999');await capture('14b-connections-lower-small.png')
-  await run('[...document.querySelectorAll(".settings-tabs button")].find(b=>b.textContent==="高级诊断").click()');await click('.advanced-options summary');await until('!!document.querySelector(".diagnostic-samples")');await capture('14c-advanced-small.png')
-  await click('[aria-label="关闭弹窗"]');await click('[data-testid="room-status"]');await run('Array.from(document.querySelectorAll("dialog button")).find(b=>b.textContent==="个人空间与账号管理").click()');await until('document.querySelector("#modal-title")?.textContent==="个人空间"');assert.equal(await run('document.querySelectorAll("dialog[open]").length'),1)
+  await click('[aria-label="关闭弹窗"]')
+  // Diagnostics now belongs to Messages, and must use the authenticated fixture
+  // rather than pretending the rehearsal source carries real room diagnostics.
+  await product.action('source','live');await until('!!document.querySelector("[data-testid=tab-messages]")')
+  await product.action('connect','123456');await click('[data-testid="tab-messages"]');await click('#messages-tab-diagnostics')
+  await until('!!document.querySelector(".diagnostic-samples")');await capture('14c-diagnostics-small.png');await checkLayout()
+  await product.action('source','test');await until('!!document.querySelector("[data-testid=room-status]")')
+  await click('[data-testid="room-status"]');await run('Array.from(document.querySelectorAll("dialog button")).find(b=>b.textContent==="个人空间与账号管理").click()');await until('document.querySelector("#modal-title")?.textContent==="个人空间"');assert.equal(await run('document.querySelectorAll("dialog[open]").length'),1)
   await click('[aria-label="关闭弹窗"]');await click('[aria-label="打开设置"]')
   await run('Array.from(document.querySelectorAll(".settings-tabs button")).find(b=>b.textContent==="本地存储").click()');await until('document.querySelectorAll(".storage-grid strong").length===4');await capture('15-storage-small.png')
   main.setSize(1360,920);await wait(100);await capture('16-storage.png')

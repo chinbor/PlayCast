@@ -1,0 +1,59 @@
+{
+  "recordedAt": "2026-10-02T04:29:06.862Z",
+  "profileMode": "warm",
+  "method": "Reused isolated profile after one excluded warmup launch; OS file cache is not reset. CDP enabled for observation. Onboarding observation includes CDP attachment and polling overhead, with no artificial delay subtracted. Click latency measures DOM availability, not compositor presentation. No real account or room is connected.",
+  "results": [
+    {
+      "launchToDOMReadyMs": 300,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 329,
+      "onboardingClickToDOMMs": null
+    },
+    {
+      "launchToDOMReadyMs": 283.20009768009186,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 313,
+      "onboardingClickToDOMMs": null
+    },
+    {
+      "launchToDOMReadyMs": 319.80000001192093,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 353,
+      "onboardingClickToDOMMs": null
+    },
+    {
+      "launchToDOMReadyMs": 276.79995116591454,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 306,
+      "onboardingClickToDOMMs": null
+    },
+    {
+      "launchToDOMReadyMs": 295.59995117783546,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 327,
+      "onboardingClickToDOMMs": null
+    }
+  ],
+  "summary": {
+    "launchToDOMReadyMs": {
+      "samples": 5,
+      "medianMs": 295.6,
+      "p95Ms": 319.8
+    },
+    "launchToFirstContentfulPaintMs": {
+      "samples": 0,
+      "medianMs": null,
+      "p95Ms": null
+    },
+    "launchToOnboardingObservedMs": {
+      "samples": 5,
+      "medianMs": 327,
+      "p95Ms": 353
+    },
+    "onboardingClickToDOMMs": {
+      "samples": 0,
+      "medianMs": null,
+      "p95Ms": null
+    }
+  }
+}

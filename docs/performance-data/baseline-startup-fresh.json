@@ -1,0 +1,60 @@
+{
+  "executable": "release/win-unpacked/PlayCast.exe",
+  "recordedAt": "2026-10-02T03:26:59.542Z",
+  "profileMode": "fresh",
+  "method": "Fresh isolated profiles; OS file cache is not reset. CDP enabled for observation. Onboarding observation includes CDP attachment and polling overhead, with no artificial delay subtracted. Click latency measures DOM availability, not compositor presentation. No real account or room is connected.",
+  "results": [
+    {
+      "launchToDOMReadyMs": 311.60004884004593,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 356,
+      "onboardingClickToDOMMs": 24.5
+    },
+    {
+      "launchToDOMReadyMs": 321.40000000596046,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 384,
+      "onboardingClickToDOMMs": 21.5
+    },
+    {
+      "launchToDOMReadyMs": 348.19990235567093,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 419,
+      "onboardingClickToDOMMs": 23.299999982118607
+    },
+    {
+      "launchToDOMReadyMs": 306.5999023616314,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 336,
+      "onboardingClickToDOMMs": 20.30000001192093
+    },
+    {
+      "launchToDOMReadyMs": 304.50004881620407,
+      "launchToFirstContentfulPaintMs": null,
+      "launchToOnboardingObservedMs": 343,
+      "onboardingClickToDOMMs": 53.099999994039536
+    }
+  ],
+  "summary": {
+    "launchToDOMReadyMs": {
+      "samples": 5,
+      "medianMs": 311.6,
+      "p95Ms": 348.2
+    },
+    "launchToFirstContentfulPaintMs": {
+      "samples": 0,
+      "medianMs": null,
+      "p95Ms": null
+    },
+    "launchToOnboardingObservedMs": {
+      "samples": 5,
+      "medianMs": 356,
+      "p95Ms": 419
+    },
+    "onboardingClickToDOMMs": {
+      "samples": 5,
+      "medianMs": 23.3,
+      "p95Ms": 53.1
+    }
+  }
+}

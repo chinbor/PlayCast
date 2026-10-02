@@ -1,0 +1,45 @@
+{
+  "unpackedBytes": 338656777,
+  "executableBytes": 246091264,
+  "asarBytes": 2128437,
+  "asarGroups": {
+    "node_modules/ws": 135660,
+    "LICENSE": 1078,
+    "THIRD_PARTY_NOTICES.md": 6398,
+    "app-brand.json": 85,
+    "dist": 1633586,
+    "electron": 330140,
+    "package.json": 322
+  },
+  "localeBytes": 1762550,
+  "locales": [
+    {
+      "name": "en-US.pak",
+      "bytes": 586582
+    },
+    {
+      "name": "zh-CN.pak",
+      "bytes": 592081
+    },
+    {
+      "name": "zh-TW.pak",
+      "bytes": 583887
+    }
+  ],
+  "entries": 90,
+  "forbiddenEntries": [],
+  "notices": {
+    "electron": true,
+    "chromium": true,
+    "project": true,
+    "thirdParty": true,
+    "ws": true
+  },
+  "version": "0.2.2",
+  "installers": [
+    {
+      "name": "PlayCast-Setup-0.2.2-x64.exe",
+      "bytes": 94367413
+    }
+  ]
+}

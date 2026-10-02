@@ -1,0 +1,25 @@
+const {test}=require('node:test')
+const assert=require('node:assert/strict')
+const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path')
+const {createPackage}=require('@electron/asar')
+
+test('package audit measures physical bytes and detects accidentally shipped renderer development dependencies',async()=>{
+  const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'playcast-package-report-'))
+  try{
+    const stage=path.join(temporary,'stage'),unpacked=path.join(temporary,'win-unpacked')
+    await fs.mkdir(path.join(stage,'node_modules/react'),{recursive:true})
+    await fs.writeFile(path.join(stage,'node_modules/react/index.js'),'module.exports={}')
+    await fs.mkdir(path.join(unpacked,'resources'),{recursive:true})
+    await fs.mkdir(path.join(unpacked,'locales'),{recursive:true})
+    await fs.writeFile(path.join(unpacked,'PlayCast.exe'),Buffer.alloc(10))
+    await fs.writeFile(path.join(unpacked,'locales/en-US.pak'),Buffer.alloc(7))
+    await createPackage(stage,path.join(unpacked,'resources/app.asar'))
+    const {collectPackageReport}=await import('../scripts/package-report.mjs')
+    const report=await collectPackageReport(unpacked)
+    assert.equal(report.executableBytes,10)
+    assert.equal(report.localeBytes,7)
+    assert.equal(report.asarGroups['node_modules/react'],17)
+    assert.ok(report.forbiddenEntries.some(name=>name.includes('node_modules/react/')))
+    assert.equal(report.unpackedBytes,10+7+(await fs.stat(path.join(unpacked,'resources/app.asar'))).size)
+  }finally{await fs.rm(temporary,{recursive:true,force:true})}
+})

@@ -90,8 +90,8 @@ module.exports=async({product,run,until,click,wait,output})=>{
  find('challenge-settings').setPosition(20,20);find('overlay').setPosition(520,20);find('overlay').showInactive()
  await field('settings-height','360');await check('overlay','innerHeight===360')
  await tap('challenge-settings','settings-compact-size')
- assert.deepEqual(find('overlay').getContentSize(),[320,380])
  await check('overlay','innerWidth===320&&innerHeight===380')
+ assert.deepEqual(find('overlay').getContentSize(),[320,380])
  await tap('challenge-settings','config-close')
  // Compact single-rule state: total appears only in the heading and the
  // removed footer is not mounted. Section alignment remains unchanged.

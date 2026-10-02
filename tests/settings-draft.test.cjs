@@ -1,6 +1,7 @@
+const loadRenderer=require('./load-renderer.cjs')
 const {test}=require('node:test'),assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),{pathToFileURL}=require('node:url')
-const file=path.resolve(__dirname,'../src/settings-draft.js')
-async function draft(){return fs.existsSync(file)?import(pathToFileURL(file)): {}}
+const file=path.resolve(__dirname,'../src/settings-draft.ts')
+async function draft(){return fs.existsSync(file)?Promise.resolve(loadRenderer(file)): {}}
 test('incoming saved settings never silently overwrite local edits; cancel takes latest persisted settings',async()=>{
  const d=await draft();assert.equal(typeof d.beginDraft,'function')
  const edited=d.editDraft(d.beginDraft({theme:'dark'}),{theme:'light'})

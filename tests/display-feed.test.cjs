@@ -1,5 +1,6 @@
+const loadRenderer=require('./load-renderer.cjs')
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const model=()=>import('../src/display-feed.js')
+const model=()=>Promise.resolve(loadRenderer('../src/display-feed.ts'))
 const rows=(a,b,type='comment')=>Array.from({length:b-a+1},(_,i)=>({rowId:a+i,type,text:String(a+i)}))
 const packet=(messages,extra={})=>({generation:'g',messages,retainedIds:messages.map(r=>r.rowId),limit:1000,perTypeLimit:200,...extra})
 const tick=()=>new Promise(r=>setImmediate(r))

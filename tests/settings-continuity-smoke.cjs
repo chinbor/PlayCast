@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),{BrowserWindow}=require('electron'),{
 // makes delivery order reproducible without adding test hooks to production.
 module.exports=async({wait})=>{
  const code=buildSync({stdin:{resolveDir:path.resolve('.'),loader:'jsx',contents:`
-  import React from 'react';import {createRoot} from 'react-dom/client';import Settings from './src/components/DisplaySettingsWindow.jsx';
+  import React from 'react';import {createRoot} from 'react-dom/client';import Settings from './src/components/DisplaySettingsWindow.tsx';
   const initial={contextVersion:1,visible:true,displayKind:'challenge',section:'appearance',presentation:{title:'',width:320,height:440},operations:{available:true,source:'live',room:{id:'123',status:'idle'},game:{status:'waiting'},challenge:{id:'a',status:'paused',configured:true,canStart:true}}};
   let state=initial;const listeners=new Set(),contexts=new Set(),requests=[];
   const api={getProduct:async()=>state,onProduct:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},onContextChange:fn=>{contexts.add(fn);return()=>contexts.delete(fn)},displayControl:(kind,command,value,version)=>new Promise((resolve,reject)=>requests.push({kind,command,value,version,resolve,reject}))};

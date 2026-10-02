@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),path=require('node:path'),Module=require('node:module'),{buildSync}=require('esbuild')
-const filename=path.resolve(__dirname,'../src/components/FeatureNavigation.jsx'),m=new Module(filename,module);m.paths=module.paths;m._compile(buildSync({entryPoints:[filename],bundle:true,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom'],write:false}).outputFiles[0].text,filename)
+const filename=path.resolve(__dirname,'../src/components/FeatureNavigation.tsx'),m=new Module(filename,module);m.paths=module.paths;m._compile(buildSync({entryPoints:[filename],bundle:true,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom'],write:false}).outputFiles[0].text,filename)
 test('authenticated account enters workspace before room connection and stays during preparation',()=>{
  const {workspaceAdmission}=m.exports;assert.equal(typeof workspaceAdmission,'function')
  const s={source:'live',platform:{id:'douyin'},account:{status:'authenticated',profile:{id:'a'}},room:'',setup:{stage:'gameplay',roomConfirmed:false,workspaceAvailable:true}}

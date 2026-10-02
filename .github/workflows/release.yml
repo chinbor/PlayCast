@@ -1,0 +1,67 @@
+name: Windows release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify:workflows
+      - run: npm run release:check
+      - run: npm run dist:win
+      - run: npm run smoke
+      - run: npm run verify:package
+      - run: npm run report:package -- release/package-report.json
+      - name: Create installer checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem -LiteralPath release -Filter 'PlayCast-Setup-*.exe' |
+            ForEach-Object { '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name } |
+            Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playcast-windows-x64
+          path: |
+            release/PlayCast-Setup-*.exe
+            release/SHA256SUMS.txt
+            release/package-report.json
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: playcast-windows-x64
+          path: release
+      - name: Publish verified tag release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          $releaseFiles = @(Get-ChildItem -LiteralPath release -File | ForEach-Object { $_.FullName })
+          gh release create $env:RELEASE_TAG @releaseFiles --verify-tag --generate-notes --title "PlayCast $env:RELEASE_TAG"

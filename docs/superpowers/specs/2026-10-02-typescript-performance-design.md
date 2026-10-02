@@ -1,6 +1,6 @@
 # PlayCast TypeScript migration and performance design
 
-Status: proposed; implementation requires design approval.
+Status: approved in chat and implemented. Final verification and measured limitations are recorded in docs/performance.md.
 
 ## Scope and constraints
 

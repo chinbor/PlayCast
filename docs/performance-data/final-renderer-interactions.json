@@ -1,0 +1,42 @@
+{
+  "recordedAt": "2026-10-02T04:26:52.194Z",
+  "method": "One visible isolated Electron profile; synthetic authenticated account/room. Ten tab transitions and ten unique incoming fixture comments through adapter/product/query/React. Click-to-DOM uses performance.now; message-to-DOM uses OS wall-clock across processes. No real account, network room, game or compositor/paint measurement.",
+  "results": {
+    "tabClickToDOMMs": [
+      15,
+      4.600000023841858,
+      4.0999999940395355,
+      3.800000011920929,
+      5.9000000059604645,
+      3.800000011920929,
+      4.199999988079071,
+      4,
+      3.899999976158142,
+      3.5999999940395355
+    ],
+    "messageArrivalToDOMMs": [
+      260,
+      258,
+      259,
+      265,
+      264,
+      261,
+      268,
+      261,
+      258,
+      259
+    ]
+  },
+  "summary": {
+    "tabClickToDOMMs": {
+      "samples": 10,
+      "medianMs": 4.05,
+      "p95Ms": 15
+    },
+    "messageArrivalToDOMMs": {
+      "samples": 10,
+      "medianMs": 260.5,
+      "p95Ms": 268
+    }
+  }
+}

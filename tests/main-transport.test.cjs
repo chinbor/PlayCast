@@ -95,6 +95,7 @@ test('main native close requires bounded owner consent with no popups and reject
  }
  popup.close();assert.equal(popup.dead,true)
  f.handlers['main:close-guard'](event,true,0);w.close();w.close();f.app.quit();await tick()
+ for(const invalid of [null,'false',{},1])assert.throws(()=>f.handlers['main:close-guard'](event,invalid,0),/Invalid close guard/)
  assert.equal(sent.filter(s=>s.channel==='display:close-request').length,1);assert.equal(f.calls.flush,0)
  let request=sent.find(s=>s.channel==='display:close-request').value
  f.handlers['main:close-answer'](event,request.id,false,0);await tick();assert.equal(f.calls.stop,0);assert.equal(f.calls.quit,undefined)
@@ -268,6 +269,7 @@ test('close guard IPC is popup-own-frame-kind-context only and repeated native r
  for(const bad of [event(f.windows[0]),event(f.windows[2]),{...event(w),senderFrame:{}}])assert.throws(()=>f.handlers['display:close-guard'](bad,'challenge',true,0),/denied/i)
  assert.equal(f.handlers['display:close-guard'](event(w),'challenge',true,99),false)
  f.handlers['display:close-guard'](event(w),'challenge',true,0);w.close();w.close();assert.equal(sent.filter(s=>s.channel==='display:close-request').length,1);assert.equal(w.dead,undefined)
+ for(const invalid of [null,'false',{},1])assert.throws(()=>f.handlers['display:close-guard'](event(w),'challenge',invalid,0),/Invalid close guard/)
  const request=sent.at(-1).value
  assert.throws(()=>f.handlers['display:close-answer'](event(f.windows[0]),'challenge',request.id,true,0),/denied/i)
  assert.throws(()=>f.handlers['display:close-answer'](event(w),'challenge',request.id,'yes',0),/invalid/i)

@@ -1,0 +1,20 @@
+name: Bug report
+description: Report a reproducible PlayCast problem
+body:
+  - type: input
+    id: version
+    attributes:
+      label: PlayCast and Windows version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include expected and actual behavior; remove cookies, credentials, and personal data from logs/screenshots.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant screenshots or diagnostics
